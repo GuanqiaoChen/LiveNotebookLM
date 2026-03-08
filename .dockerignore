@@ -1,0 +1,16 @@
+.venv
+venv
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+*.md
+.pytest_cache
+.ruff_cache
+terraform/
+*.tfstate
+*.tfstate.*
+deploy.sh

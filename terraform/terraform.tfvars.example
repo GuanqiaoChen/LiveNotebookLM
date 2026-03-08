@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and fill in. Do not commit terraform.tfvars.
+
+project_id = "your-gcp-project-id"
+region     = "us-central1"
+
+# Optional overrides
+# service_name           = "live-notebook-lm"
+# artifact_registry_repo = "live-notebook-lm"
+# bucket_suffix          = "live-notebook-lm-docs"
+# agent_model            = "gemini-live-2.5-flash-native-audio"
+# allow_unauthenticated  = false
+
+# image is passed by deploy.sh or: terraform apply -var="image=REGION-docker.pkg.dev/PROJECT/REPO/IMAGE:TAG"
