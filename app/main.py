@@ -3,11 +3,27 @@ LiveNotebookLM FastAPI application.
 
 WebSocket endpoint for real-time voice interaction via ADK Gemini Live API Toolkit.
 """
-
+import os
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
 load_dotenv()
+
+REQUIRED_ENV_VARS = [
+    "GOOGLE_CLOUD_PROJECT",
+    "GOOGLE_CLOUD_LOCATION",
+    "GOOGLE_GENAI_USE_VERTEXAI",
+    "LIVE_NOTEBOOK_AGENT_MODEL",
+]
+
+def validate_env():
+    missing = [k for k in REQUIRED_ENV_VARS if not os.getenv(k)]
+    if missing:
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+    if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() != "true":
+        raise RuntimeError("GOOGLE_GENAI_USE_VERTEXAI must be set to true")
+
+validate_env()
 
 from live_notebook_agent.agent import root_agent
 
