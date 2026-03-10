@@ -24,7 +24,7 @@ variable "artifact_registry_repo" {
 variable "bucket_suffix" {
   description = "Suffix for GCS bucket (full name: project_id-bucket_suffix)"
   type        = string
-  default     = "live-notebook-lm-docs"
+  default     = "livenotebooklm-dev"
 }
 
 variable "image" {
@@ -34,9 +34,14 @@ variable "image" {
 }
 
 variable "agent_model" {
-  description = "Gemini model for Live API (Vertex AI format)"
+  description = "Gemini Live model for Vertex AI"
   type        = string
   default     = "gemini-live-2.5-flash-native-audio"
+}
+
+variable "service_account_email" {
+  description = "Service account email used by Cloud Run runtime"
+  type        = string
 }
 
 variable "cpu" {
@@ -54,5 +59,5 @@ variable "memory" {
 variable "allow_unauthenticated" {
   description = "Allow unauthenticated access to Cloud Run"
   type        = bool
-  default     = false
+  default     = true
 }

@@ -3,10 +3,11 @@ name = "live-notebook-lm"
 version = "0.1.0"
 description = "LiveNotebookLM - NotebookLM with real-time voice interaction via Gemini Live API"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "google-adk>=1.20.0",
     "google-genai>=1.0.0",
+    "google-cloud-storage>=2.18.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "python-dotenv>=1.0.0",
@@ -28,7 +29,7 @@ packages = ["app"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]

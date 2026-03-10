@@ -1,20 +1,20 @@
-# LiveNotebookLM - Cloud Run container
-# Python 3.10+ required for google-adk
-
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy project and install dependencies
 COPY pyproject.toml ./
+COPY README.md ./
 COPY app/ ./app/
-RUN pip install --no-cache-dir -e .
 
-# Run from app/ so Python finds live_notebook_agent
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e .
+
+# Run from app/ so imports like
+# from live_notebook_agent.agent import root_agent
+# work with your current structure.
 WORKDIR /app/app
 
 ENV PORT=8080
 EXPOSE 8080
 
-# Cloud Run expects to bind to PORT
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
