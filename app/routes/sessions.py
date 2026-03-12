@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from schemas import (
+from app.schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
     SessionDetail,
     SessionMetadata,
 )
-from session_store import SessionStore
-from source_store import SourceStore
+from app.session_store import SessionStore
+from app.source_store import SourceStore
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])

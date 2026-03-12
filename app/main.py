@@ -1,12 +1,13 @@
 import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from google import genai
 
-from config import get_settings
-from gcs_store import upload_text, upload_bytes
-from live_notebook_agent.agent import AGENT_REGISTRY
-from routes import sessions_router, sources_router, recap_router
+from app.config import get_settings
+from app.gcs_store import upload_text, upload_bytes
+from app.routes import sessions_router, sources_router, recap_router
+from app.live_notebook_agent.agent import AGENT_REGISTRY
+from app.ws_handlers import handle_live_websocket
 
 load_dotenv()
 get_settings()
@@ -30,8 +31,9 @@ async def root():
         "status": "ok",
         "platform": "vertex-ai",
         "model": settings.live_notebook_agent_model,
-        "agent": list(AGENT_REGISTRY.keys()),
+        "agents": list(AGENT_REGISTRY.keys()),
     }
+
 
 @app.get("/health")
 async def health():
@@ -129,3 +131,15 @@ async def live_smoke():
             "error_type": type(exc).__name__,
             "message": str(exc),
         }
+
+
+@app.websocket("/ws/live/{session_id}")
+async def live_ws(websocket: WebSocket, session_id: str):
+    await handle_live_websocket(websocket, session_id)
+
+
+@app.websocket("/ws/ping")
+async def ws_ping(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.send_json({"type": "pong"})
+    await websocket.close()
