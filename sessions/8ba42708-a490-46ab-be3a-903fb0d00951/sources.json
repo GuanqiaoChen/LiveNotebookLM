@@ -1,0 +1,15 @@
+[
+  {
+    "source_id": "ab083a9a-4909-440c-84af-d4f95e5a9b27",
+    "session_id": "8ba42708-a490-46ab-be3a-903fb0d00951",
+    "kind": "uploaded_file",
+    "display_name": "paper.pdf",
+    "original_filename": "paper.pdf",
+    "mime_type": "application/pdf",
+    "gcs_uri": "gs://dummy/paper.pdf",
+    "source_url": null,
+    "uploaded_at": "2026-03-12T02:48:54.281811Z",
+    "processing_status": "uploaded",
+    "chunk_count": 0
+  }
+]

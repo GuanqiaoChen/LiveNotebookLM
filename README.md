@@ -1,5 +1,6 @@
 # LiveNotebookLM
-过时readme 不要看
+# 过时readme 不要看
+
 NotebookLM 增强版，核心亮点：**支持语音交互（实时对话）**，而当前 NotebookLM 仅能生成语音概览和视频概览。
 
 ## Tech Stack
@@ -24,12 +25,9 @@ LiveNotebookLM/
 │   ├── schemas.py                      # Pydantic 请求/响应模型
 │   ├── session_store.py                # Session 元数据与消息历史存取
 │   ├── source_store.py                 # Source 元数据存取（与 GCS URI 关联）
-│   ├── source_processor.py             # PDF/TXT/DOCX 抽文本、切块、元数据提取
-│   ├── retriever.py                    # 检索逻辑
+│   ├── source_processor.py             # PDF/TXT/DOCX/Web source 抽文本、切块、元数据提取
 │   ├── memory_manager.py               # 长对话摘要与恢复上下文
-│   ├── recap_manager.py                # 生成 recap（第一版可先简单）
 │   ├── live_runtime.py                 # Gemini Live API 连接、收发事件、streaming I/O
-│   ├── live_orchestrator.py            # 一轮 live turn 的编排：检索、组 prompt、调用 runtime、落盘
 │   ├── ws_handlers.py                  # WebSocket 事件协议处理
 │   ├── routes/
 │   │   ├── __init__.py
@@ -40,9 +38,11 @@ LiveNotebookLM/
 │   ├── live_notebook_agent/
 │   │   ├──sub_agents
 │   │   │   ├── response_agent.py          # 负责最终回答
-│   │   │   ├── search_agent.py            # Google Search agent
-│   │   │   ├── source_agent.py            # 基于上传来源做 grounding
-│   │   │   └── recap_agent.py             # 生成 recap
+│   │   │   ├── source_agent.py            # 基于source做 grounding
+│   │   │   ├── retriever.py               # 检索逻辑
+│   │   │   ├── live_orchestrator.py       # 一轮 live turn 的编排：检索、组 prompt、调用 runtime、落盘
+│   │   │   ├── web_search_agent.py        # Google Search agent
+│   │   │   └── recap_manager.py           # 生成 recap
 │   │   ├──tools
 │   │   │   ├──__init__.py
 │   │   │   └──any_self_defined_tools.py
