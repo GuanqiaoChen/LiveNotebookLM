@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from config import get_settings
-from schemas import MessageRecord
-from session_store import SessionStore
+from app.config import get_settings
+from app.schemas import MessageRecord
+from app.session_store import SessionStore
 
 
 class MemoryManager:
@@ -31,7 +31,9 @@ class MemoryManager:
         messages = self.session_store.get_messages(session_id)
         recent = messages[-recent_limit:]
 
-        rolling_summary = self._build_summary(messages[:-recent_limit] if len(messages) > recent_limit else [])
+        rolling_summary = self._build_summary(
+            messages[:-recent_limit] if len(messages) > recent_limit else []
+        )
         open_questions = self._extract_open_questions(messages)
         key_topics = self._extract_key_topics(messages)
 

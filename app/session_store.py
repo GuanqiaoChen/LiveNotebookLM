@@ -5,8 +5,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config import get_settings
-from schemas import MessageRecord, SessionDetail, SessionMetadata
+from app.config import get_settings
+from app.schemas import MessageRecord, SessionDetail, SessionMetadata
 
 
 class SessionStore:

@@ -1,4 +1,3 @@
-import os
 import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -6,11 +5,10 @@ from google import genai
 
 from config import get_settings
 from gcs_store import upload_text, upload_bytes
-from live_notebook_agent.agent import root_agent
-from routes import sessions_router, sources_router
+from live_notebook_agent.agent import AGENT_REGISTRY
+from routes import sessions_router, sources_router, recap_router
 
 load_dotenv()
-
 get_settings()
 
 app = FastAPI(
@@ -21,6 +19,7 @@ app = FastAPI(
 
 app.include_router(sessions_router)
 app.include_router(sources_router)
+app.include_router(recap_router)
 
 
 @app.get("/")
@@ -31,9 +30,8 @@ async def root():
         "status": "ok",
         "platform": "vertex-ai",
         "model": settings.live_notebook_agent_model,
-        "agent": root_agent.name,
+        "agent": list(AGENT_REGISTRY.keys()),
     }
-
 
 @app.get("/health")
 async def health():

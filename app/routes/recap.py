@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+
+from app.schemas import RecapData
+from app.session_store import SessionStore
+from app.source_store import SourceStore
+from app.live_notebook_agent.sub_agents.recap_manager import (
+    generate_recap_data,
+    load_recap_data,
+    save_recap_data,
+)
+
+
+router = APIRouter(prefix="/sessions/{session_id}/recap", tags=["recap"])
+
+
+@router.post("/generate", response_model=RecapData)
+async def generate_recap(session_id: str) -> RecapData:
+    session_store = SessionStore()
+    source_store = SourceStore()
+
+    try:
+        session_store.get_session_metadata(session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    messages = [msg.model_dump(mode="json") for msg in session_store.get_messages(session_id)]
+    sources = [src.model_dump(mode="json") for src in source_store.list_sources(session_id)]
+
+    if not messages:
+        raise HTTPException(status_code=400, detail="Cannot generate recap for an empty session.")
+
+    try:
+        recap = generate_recap_data(
+            session_id=session_id,
+            messages=messages,
+            sources=sources,
+        )
+        save_recap_data(session_id, recap)
+        return recap
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Recap generation failed: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@router.get("", response_model=RecapData)
+async def get_recap(session_id: str) -> RecapData:
+    session_store = SessionStore()
+
+    try:
+        session_store.get_session_metadata(session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    recap = load_recap_data(session_id)
+    if recap is None:
+        raise HTTPException(status_code=404, detail="Recap not found for this session.")
+
+    return recap

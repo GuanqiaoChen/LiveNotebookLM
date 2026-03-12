@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from google import genai
 from google.adk.agents import Agent
 
+from app.config import get_settings
+from app.schemas import RecapData
 from app.live_notebook_agent.config import get_agent_settings
 from app.live_notebook_agent.prompts import RECAP_AGENT_INSTRUCTION
 
 
 agent_settings = get_agent_settings()
+settings = get_settings()
 
 recap_manager = Agent(
     name="recap_manager",
@@ -39,4 +47,72 @@ def build_recap_input(messages: list[dict], sources: list[dict]) -> str:
         else:
             lines.append(f"- {display_name}")
 
+    lines.append("")
+    lines.append(
+        "Generate a recap, not a transcript copy. "
+        "Return JSON with keys: topic, key_insights, sources_referenced, open_questions, next_steps."
+    )
     return "\n".join(lines)
+
+
+def generate_recap_data(
+    session_id: str,
+    messages: list[dict],
+    sources: list[dict],
+) -> RecapData:
+    client = genai.Client(
+        vertexai=True,
+        project=settings.google_cloud_project,
+        location=settings.google_cloud_location,
+    )
+
+    prompt = build_recap_input(messages, sources)
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config={
+            "response_mime_type": "application/json",
+        },
+    )
+
+    raw_text = (response.text or "").strip()
+    parsed = json.loads(raw_text) if raw_text else {}
+
+    recap = RecapData(
+        session_id=session_id,
+        topic=parsed.get("topic", ""),
+        key_insights=parsed.get("key_insights", []) or [],
+        sources_referenced=parsed.get("sources_referenced", []) or [],
+        open_questions=parsed.get("open_questions", []) or [],
+        next_steps=parsed.get("next_steps", []) or [],
+        generated_at=datetime.now(timezone.utc),
+    )
+    return recap
+
+
+def save_recap_data(session_id: str, recap: RecapData) -> None:
+    recap_path = _recap_path(session_id)
+    recap_path.write_text(
+        json.dumps(recap.model_dump(mode="json"), indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def load_recap_data(session_id: str) -> RecapData | None:
+    recap_path = _recap_path(session_id)
+    if not recap_path.exists():
+        return None
+
+    data = json.loads(recap_path.read_text(encoding="utf-8"))
+    if not data:
+        return None
+
+    return RecapData.model_validate(data)
+
+
+def _recap_path(session_id: str) -> Path:
+    base_dir = Path(settings.sessions_dir).resolve()
+    session_dir = base_dir / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    return session_dir / "recap.json"

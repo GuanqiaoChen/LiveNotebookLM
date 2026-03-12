@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parent
+
+load_dotenv(APP_DIR / ".env")
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -39,6 +43,12 @@ def get_settings() -> Settings:
     if os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() != "true":
         raise RuntimeError("GOOGLE_GENAI_USE_VERTEXAI must be set to true")
 
+    sessions_dir = os.getenv("SESSIONS_DIR")
+    if sessions_dir:
+        sessions_dir_path = Path(sessions_dir).resolve()
+    else:
+        sessions_dir_path = PROJECT_ROOT / "sessions"
+
     return Settings(
         google_cloud_project=os.environ["GOOGLE_CLOUD_PROJECT"],
         google_cloud_location=os.environ["GOOGLE_CLOUD_LOCATION"],
@@ -46,7 +56,7 @@ def get_settings() -> Settings:
         live_notebook_agent_model=os.environ["LIVE_NOTEBOOK_AGENT_MODEL"],
         gcs_bucket=os.environ["GCS_BUCKET"],
         port=int(os.getenv("PORT", "8080")),
-        sessions_dir=os.getenv("SESSIONS_DIR", "../sessions"),
+        sessions_dir=str(sessions_dir_path),
         max_sources_per_session=int(os.getenv("MAX_SOURCES_PER_SESSION", "10")),
         pinecone_api_key=os.getenv("PINECONE_API_KEY"),
         pinecone_index_name=os.getenv("PINECONE_INDEX_NAME"),
