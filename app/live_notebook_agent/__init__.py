@@ -1,3 +1,1 @@
-from . import agent
-
-__all__ = ["agent"]
+# live_notebook_agent package
