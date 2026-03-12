@@ -5,11 +5,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from config import get_settings
-from gcs_store import upload_bytes
-from schemas import SourceMetadata
-from session_store import SessionStore
-from source_store import SourceStore
+from app.config import get_settings
+from app.gcs_store import upload_bytes
+from app.schemas import SourceMetadata
+from app.session_store import SessionStore
+from app.source_processor import SourceProcessor
+from app.source_store import SourceStore
+from app.live_notebook_agent.sub_agents.retriever import Retriever
 
 
 router = APIRouter(prefix="/sessions/{session_id}/sources", tags=["sources"])
@@ -26,6 +28,8 @@ async def upload_source(
 ) -> SourceMetadata:
     session_store = SessionStore()
     source_store = SourceStore()
+    source_processor = SourceProcessor()
+    retriever = Retriever()
     settings = get_settings()
 
     try:
@@ -65,10 +69,45 @@ async def upload_source(
             mime_type=file.content_type or "application/octet-stream",
             gcs_uri=gcs_uri,
         )
+
+        # Chunking
+        chunks = source_processor.process_uploaded_bytes(
+            source=source,
+            filename=file.filename,
+            content=content,
+        )
+
+        # Write into Pinecone
+        if chunks:
+            retriever.index_chunks_with_vertex_embeddings(
+                session_id=session_id,
+                chunks=chunks,
+            )
+
+        # Update source metadata
+        source.processing_status = "indexed"
+        source.chunk_count = len(chunks)
+        source_store.update_source(source)
+
         return source
 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        # Update source status even if processing/indexing fails, to avoid leaving it in "uploaded" state indefinitely
+        try:
+            existing_sources = source_store.list_sources(session_id)
+            if existing_sources:
+                latest = existing_sources[-1]
+                latest.processing_status = "failed"
+                source_store.update_source(latest)
+        except Exception:
+            pass
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Source processing/indexing failed: {type(exc).__name__}: {exc}",
+        ) from exc
 
 
 @router.get("", response_model=list[SourceMetadata])

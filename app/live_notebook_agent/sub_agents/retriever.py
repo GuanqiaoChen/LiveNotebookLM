@@ -42,18 +42,25 @@ class Retriever:
 
         vectors = []
         for chunk, embedding in zip(chunks, embeddings):
+            metadata = {
+                "session_id": chunk["session_id"],
+                "source_id": chunk["source_id"],
+                "source_name": chunk["source_name"],
+                "text": chunk["text"],
+            }
+
+            # Pinecone metadata cannot have None values
+            if chunk.get("page") is not None:
+                metadata["page"] = chunk["page"]
+
+            if chunk.get("section") is not None:
+                metadata["section"] = chunk["section"]
+
             vectors.append(
                 {
                     "id": chunk["chunk_id"],
                     "values": embedding,
-                    "metadata": {
-                        "session_id": chunk["session_id"],
-                        "source_id": chunk["source_id"],
-                        "source_name": chunk["source_name"],
-                        "text": chunk["text"],
-                        "page": chunk.get("page"),
-                        "section": chunk.get("section"),
-                    },
+                    "metadata": metadata,
                 }
             )
 

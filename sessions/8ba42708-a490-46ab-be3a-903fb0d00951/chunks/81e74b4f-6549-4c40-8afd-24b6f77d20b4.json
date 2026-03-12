@@ -1,0 +1,47 @@
+[
+  {
+    "chunk_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4_chunk_0",
+    "session_id": "8ba42708-a490-46ab-be3a-903fb0d00951",
+    "source_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4",
+    "source_name": "README.md",
+    "text": "# LiveNotebookLM\n# 过时readme 不要看\nNotebookLM 增强版，核心亮点：**支持语音交互（实时对话）**，而当前 NotebookLM 仅能生成语音概览和视频概览。\n## Tech Stack\n| 组件 | 技术 |\n|------|------|\n| Agent 框架 | Google ADK (Agent Development Kit) |\n| 实时语音 | Gemini Live API Toolkit in ADK |\n| 模型 | 支持 Live API 的 Gemini 模型 |\n| 云托管 | Google Cloud Run |\n| IaC / 自动化 | Terraform + deploy.sh |\n| 环境 | Python + FastAPI + Docker + Cloud Storage |\n## 项目结构\n```\nLiveNotebookLM/\n├── app/\n│   ├── main.py                         # FastAPI 入口；注册 REST + WebSocket 路由\n│   ├── gcs_store.py                    # GCS 上传/下载基础能力（已存在，继续扩展）\n│   ├── config.py                       # 环境变量读取与统一配置\n│   ├── schemas.py                      # Pydantic 请求/响应模型\n│   ├── session_store.py                # Session 元数据与消息历史存取\n│   ├── source_store.py                 # Source 元数据存取（与 GCS URI 关联）\n│   ├── source_processor.py             # PDF/TXT/DOCX/Web source 抽文本、切块、元数据提取\n│   ├── memory_manager.py               # 长对话摘要与恢复上下文\n│   ├── live_runtime.py                 # Gemini Live API 连接、收发事件、streaming I/O\n│   ├── ws_handlers.py                  # WebSocket 事件协议处理\n│   ├── routes/\n│   │   ├── __init__.py\n│   │   ├── sessions.py                 # /sessions 相关 REST API\n│   │   ├── sources.",
+    "page": null,
+    "section": "text"
+  },
+  {
+    "chunk_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4_chunk_1",
+    "session_id": "8ba42708-a490-46ab-be3a-903fb0d00951",
+    "source_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4",
+    "source_name": "README.md",
+    "text": "       # WebSocket 事件协议处理\n│   ├── routes/\n│   │   ├── __init__.py\n│   │   ├── sessions.py                 # /sessions 相关 REST API\n│   │   ├── sources.py                  # /sessions/{id}/sources 相关 REST API\n│   │   ├── recap.py                    # /sessions/{id}/recap 相关 REST API\n│   │   └── debug.py                    # /debug/upload-smoke, /debug/live-smoke\n│   ├── live_notebook_agent/\n│   │   ├──sub_agents\n│   │   │   ├── response_agent.py          # 负责最终回答\n│   │   │   ├── source_agent.py            # 基于source做 grounding\n│   │   │   ├── retriever.py               # 检索逻辑\n│   │   │   ├── live_orchestrator.py       # 一轮 live turn 的编排：检索、组 prompt、调用 runtime、落盘\n│   │   │   ├── web_search_agent.py        # Google Search agent\n│   │   │   └── recap_manager.py           # 生成 recap\n│   │   ├──tools\n│   │   │   ├──__init__.py\n│   │   │   └──any_self_defined_tools.py\n│   │   ├── __init__.py\n│   │   ├── agent.py\n│   │   ├── prompts.py\n│   │   └── config.py                   # Agent config if necessary\n│   ├── smoke_test.py                   # Vertex AI 文本 smoke test（已存在）\n│   ├── live_smoke_test.py              # Live API smoke test（已存在）\n│   ├── static/\n│   │   └── .gitkeep\n│   └── .env\n│\n├",
+    "page": null,
+    "section": "text"
+  },
+  {
+    "chunk_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4_chunk_2",
+    "session_id": "8ba42708-a490-46ab-be3a-903fb0d00951",
+    "source_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4",
+    "source_name": "README.md",
+    "text": " Vertex AI 文本 smoke test（已存在）\n│   ├── live_smoke_test.py              # Live API smoke test（已存在）\n│   ├── static/\n│   │   └── .gitkeep\n│   └── .env\n│\n├── sessions/                           # 本地开发时的 session 数据目录\n│   └── .gitkeep\n│\n├── docs/\n│   ├── architecture.md                 # 架构说明\n│   ├── api_contract.md                 # API / WS 协议文档\n│   └── demo_script.md                  # demo 脚本\n│\n├── terraform/\n│   ├── main.tf\n│   ├── variables.tf\n│   ├── outputs.tf\n│   └── terraform.tfvars.example\n│\n├── Dockerfile\n├── deploy.sh\n├── pyproject.toml\n├── README.md\n├── .dockerignore\n└── .gitignore\n```\n## 环境准备\n### 1. Python 环境 (>=3.10)\n```bash\npython -m venv .venv\n# Windows PowerShell:\n.venv\\Scripts\\Activate.ps1\n# macOS/Linux:\nsource .venv/bin/activate\npip install -e .\n```\n### 2. 环境变量\n复制 `app/.env.example` 为 `app/.env` 并填写：\n```bash\ncp app/.env.example app/.env\n```\n**主要变量：**\n| 变量 | 说明 |\n|------|------|\n| `GOOGLE_GENAI_USE_VERTEXAI` | `true`=Vertex AI, `false`=Gemini API |\n| `GOOGLE_API_KEY` | Gemini API 密钥 (aistudio.google.com/apikey) |\n| `GOOGLE_CLOUD_PROJECT` | GCP 项目 ID (Vertex AI 时) |\n| `GOOGLE_CLOUD_LOCATION` | GCP 区域 (Vertex AI 时) |\n| `LIVE_NOTEBOOK_AGENT_MODEL` | 支持 Live API 的模型名称 |\n##",
+    "page": null,
+    "section": "text"
+  },
+  {
+    "chunk_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4_chunk_3",
+    "session_id": "8ba42708-a490-46ab-be3a-903fb0d00951",
+    "source_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4",
+    "source_name": "README.md",
+    "text": "E_CLOUD_PROJECT` | GCP 项目 ID (Vertex AI 时) |\n| `GOOGLE_CLOUD_LOCATION` | GCP 区域 (Vertex AI 时) |\n| `LIVE_NOTEBOOK_AGENT_MODEL` | 支持 Live API 的模型名称 |\n### 3. 本地运行\n```bash\ncd app\n$env:SSL_CERT_FILE = (python -m certifi)   # Windows\n# export SSL_CERT_FILE=$(python -m certifi)  # macOS/Linux\nuvicorn main:app --reload --host 0.0.0.0 --port 8080\n```\n访问 http://localhost:8080\n## 部署到 Cloud Run\n### 前置条件\n- 已安装 [gcloud CLI](https://cloud.google.com/sdk/docs/install)\n- 已安装 [Terraform](https://www.terraform.io/downloads)\n- 已登录：`gcloud auth login` 且 `gcloud auth application-default login`\n### 部署\n```bash\n./deploy.sh YOUR_GCP_PROJECT_ID us-central1\n```\n或设置环境变量：\n```bash\nexport GOOGLE_CLOUD_PROJECT=your-project-id\n./deploy.sh\n```\ndeploy.sh 将依次执行：\n1. Terraform apply（创建 Artifact Registry、GCS 桶、Cloud Run 服务）\n2. Cloud Build 构建并推送镜像\n3. Terraform apply 更新 Cloud Run 为新镜像\n### Terraform 单独使用\n```bash\ncd terraform\ncp terraform.tfvars.example terraform.tfvars\n# 编辑 terraform.tfvars\nterraform init\nterraform plan -var=\"image=REGION-docker.pkg.dev/PROJECT/live-notebook-lm/IMAGE:TAG\"\nterraform apply\n```\n## 待实现功能\n- [ ] WebSocket `/ws/{user_id}/{session_id}` 双向语音/文本流\n- [ ] ADK `Runner` + `SessionService` + `run_live()` 集",
+    "page": null,
+    "section": "text"
+  },
+  {
+    "chunk_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4_chunk_4",
+    "session_id": "8ba42708-a490-46ab-be3a-903fb0d00951",
+    "source_id": "81e74b4f-6549-4c40-8afd-24b6f77d20b4",
+    "source_name": "README.md",
+    "text": "m/IMAGE:TAG\"\nterraform apply\n```\n## 待实现功能\n- [ ] WebSocket `/ws/{user_id}/{session_id}` 双向语音/文本流\n- [ ] ADK `Runner` + `SessionService` + `run_live()` 集成\n- [ ] 文档 Grounding 工具（NotebookLM 风格）\n- [ ] 前端 UI（语音/文本交互界面）\n## 参考\n- [ADK Gemini Live API Toolkit](https://google.github.io/adk-docs/streaming/)\n- [ADK Bidi Demo](https://github.com/google/adk-samples/tree/main/python/agents/bidi-demo)\n- [Vertex AI Live API](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api)\n- [Gemini Live API](https://ai.google.dev/gemini-api/docs/live)",
+    "page": null,
+    "section": "text"
+  }
+]

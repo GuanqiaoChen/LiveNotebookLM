@@ -7,8 +7,8 @@ from typing import Optional
 from docx import Document
 from pypdf import PdfReader
 
-from config import get_settings
-from schemas import SourceMetadata
+from app.config import get_settings
+from app.schemas import SourceMetadata
 
 
 class SourceProcessor:
@@ -16,17 +16,41 @@ class SourceProcessor:
         settings = get_settings()
         self.base_dir = Path(settings.sessions_dir).resolve()
 
+    def save_uploaded_file_locally(
+        self,
+        session_id: str,
+        source_id: str,
+        filename: str,
+        content: bytes,
+    ) -> str:
+        upload_dir = self.base_dir / session_id / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        safe_name = Path(filename).name.replace(" ", "_")
+        local_path = upload_dir / f"{source_id}-{safe_name}"
+        local_path.write_bytes(content)
+        return str(local_path)
+
+    def process_uploaded_bytes(
+        self,
+        source: SourceMetadata,
+        filename: str,
+        content: bytes,
+    ) -> list[dict]:
+        local_path = self.save_uploaded_file_locally(
+            session_id=source.session_id,
+            source_id=source.source_id,
+            filename=filename,
+            content=content,
+        )
+        return self.process_source(source=source, local_file_path=local_path)
+
     def process_source(
         self,
         source: SourceMetadata,
         local_file_path: Optional[str] = None,
         web_text: Optional[str] = None,
     ) -> list[dict]:
-        """
-        Process one source, output chunk and store it to local storage.
-        uploaded_file needs local_file_path
-        web_result needs web_text
-        """
         if source.kind == "web_result":
             if not web_text:
                 raise ValueError("web_text is required for web_result sources")
