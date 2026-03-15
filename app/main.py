@@ -9,6 +9,10 @@ from app.routes import sessions_router, sources_router, recap_router
 from app.live_notebook_agent.agent import AGENT_REGISTRY
 from app.ws_handlers import handle_live_websocket
 
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
 load_dotenv()
 get_settings()
 
@@ -17,6 +21,11 @@ app = FastAPI(
     version="0.1.0",
     description="NotebookLM with real-time voice interaction via Gemini Live API",
 )
+
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.include_router(sessions_router)
 app.include_router(sources_router)
@@ -143,3 +152,7 @@ async def ws_ping(websocket: WebSocket):
     await websocket.accept()
     await websocket.send_json({"type": "pong"})
     await websocket.close()
+
+@app.get("/ui")
+async def ui():
+    return FileResponse(STATIC_DIR / "index.html")

@@ -122,6 +122,9 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
                         user_text=current_user_text_hint,
                     )
 
+                    # TEMP: disable grounding injection into Live session
+                    # await runtime.send_turn_context(grounded["grounded_prompt"])
+
                     await websocket.send_json(
                         {
                             "type": "source_cues",

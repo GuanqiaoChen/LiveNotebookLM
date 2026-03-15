@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiveNotebookLM</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f7f7f9;
+      color: #111;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 28px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 1px 8px rgba(0,0,0,0.08);
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    input, textarea, button {
+      font: inherit;
+    }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d6d6dc;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 72px;
+    }
+    button {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      background: #111827;
+      color: white;
+    }
+    button.secondary {
+      background: #e5e7eb;
+      color: #111;
+    }
+    button.danger {
+      background: #b91c1c;
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .status {
+      font-size: 14px;
+      padding: 8px 10px;
+      background: #eef2ff;
+      border-radius: 10px;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    }
+    .messages {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 65vh;
+      overflow: auto;
+      padding-right: 6px;
+    }
+    .msg {
+      padding: 12px;
+      border-radius: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .msg.user {
+      background: #e0f2fe;
+    }
+    .msg.assistant {
+      background: #f3f4f6;
+    }
+    .msg.system {
+      background: #fef3c7;
+    }
+    .sources {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 40vh;
+      overflow: auto;
+    }
+    .source {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 10px;
+      background: #fafafa;
+      font-size: 13px;
+    }
+    .label {
+      font-size: 12px;
+      color: #555;
+      margin-bottom: 4px;
+    }
+    .small {
+      font-size: 12px;
+      color: #666;
+    }
+    .muted {
+      color: #666;
+    }
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #ede9fe;
+      font-size: 12px;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>LiveNotebookLM</h1>
+    <div class="grid">
+      <div class="card">
+        <h2>Session</h2>
+
+        <div class="label">Session title</div>
+        <input id="sessionTitle" value="Live test session" />
+
+        <div class="row" style="margin-top:10px;">
+          <button id="createSessionBtn">Create Session</button>
+          <button id="connectBtn" class="secondary">Connect</button>
+        </div>
+
+        <div class="label">Session ID</div>
+        <input id="sessionId" placeholder="Create or paste a session id" />
+
+        <div class="label" style="margin-top:12px;">Text hint for retrieval</div>
+        <textarea id="textHint">What does this project do?</textarea>
+
+        <div class="row" style="margin-top:10px;">
+          <button id="startTalkBtn">Start Talking</button>
+          <button id="stopTalkBtn" class="secondary" disabled>Stop Talking</button>
+          <button id="interruptBtn" class="danger">Interrupt</button>
+        </div>
+
+        <div class="row">
+          <button id="closeBtn" class="secondary">Close Session</button>
+        </div>
+
+        <div class="status" id="statusBox">Idle</div>
+
+        <div class="small">
+          Expected mic input: PCM 16kHz mono<br />
+          Assistant playback assumes PCM 24kHz mono
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card">
+          <h2>Conversation</h2>
+          <div class="messages" id="messages"></div>
+        </div>
+
+        <div class="card">
+          <h2>Source cues</h2>
+          <div class="sources" id="sourceCues"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/live.js"></script>
+</body>
+</html>
