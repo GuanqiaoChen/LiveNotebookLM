@@ -14,13 +14,13 @@ from app.config import get_settings
 
 class LiveRuntime:
     """
-    Thin runtime wrapper over Gemini Live API.
+    Thin runtime wrapper over Gemini Live API (google-genai / Vertex AI).
 
     Responsibilities:
     - open/close a live session
     - send grounding context text
-    - stream audio chunks in real time
-    - emit normalized server events
+    - stream audio chunks in real time (VAD mode → auto multi-turn + interrupt)
+    - emit normalised server events to callers via an asyncio.Queue
     """
 
     def __init__(self) -> None:
@@ -55,8 +55,11 @@ class LiveRuntime:
         )
         self.session = await self._session_cm.__aenter__()
 
+        # Start receiver immediately so no early events are missed.
+        await self._ensure_receiver_started()
+
     async def _ensure_receiver_started(self) -> None:
-        if self._receiver_task is None:
+        if self._receiver_task is None or self._receiver_task.done():
             self._receiver_task = asyncio.create_task(self._receiver_loop())
 
     async def close(self) -> None:
@@ -77,8 +80,8 @@ class LiveRuntime:
 
     async def send_turn_context(self, grounded_prompt: str) -> None:
         """
-        Send retrieved grounding context as pre-turn text.
-        This does NOT finish the turn. Audio continues after this.
+        Send retrieved grounding context as pre-turn text (turn_complete=False
+        so the audio turn can follow immediately).
         """
         if self.session is None:
             raise RuntimeError("Live session is not connected")
@@ -109,8 +112,6 @@ class LiveRuntime:
         if self.session is None:
             raise RuntimeError("Live session is not connected")
 
-        await self._ensure_receiver_started()
-
         await self.session.send_realtime_input(
             audio=types.Blob(
                 data=audio_bytes,
@@ -129,68 +130,107 @@ class LiveRuntime:
             event = await self._event_queue.get()
             yield event
 
+    # ── Internal receiver ────────────────────────────────────────────────────
+
     async def _receiver_loop(self) -> None:
         assert self.session is not None
 
         try:
-            async for message in self.session.receive():
-                server_content = getattr(message, "server_content", None)
-                if server_content:
-                    model_turn = getattr(server_content, "model_turn", None)
-                    turn_complete = getattr(server_content, "turn_complete", None)
+            # Outer loop keeps the receiver alive across multiple VAD turns.
+            # session.receive() is a one-shot generator that ends at turn_complete;
+            # we must call it again for each subsequent turn.
+            while True:
+                async for message in self.session.receive():
+                    server_content = getattr(message, "server_content", None)
 
-                    if model_turn and getattr(model_turn, "parts", None):
-                        for part in model_turn.parts:
-                            inline_data = getattr(part, "inline_data", None)
-                            text = getattr(part, "text", None)
+                    if server_content:
+                        # ── Model interrupted (VAD detected user speech) ──────
+                        interrupted = getattr(server_content, "interrupted", False)
+                        if interrupted:
+                            await self._event_queue.put({"type": "assistant_interrupted"})
 
+                        # ── Model audio / text parts ──────────────────────────
+                        model_turn = getattr(server_content, "model_turn", None)
+                        if model_turn and getattr(model_turn, "parts", None):
+                            for part in model_turn.parts:
+                                inline_data = getattr(part, "inline_data", None)
+                                text = getattr(part, "text", None)
+
+                                if text:
+                                    await self._event_queue.put(
+                                        {"type": "assistant_text", "text": text}
+                                    )
+
+                                if inline_data and getattr(inline_data, "data", None):
+                                    encoded = base64.b64encode(inline_data.data).decode("utf-8")
+                                    await self._event_queue.put(
+                                        {
+                                            "type": "assistant_audio_chunk",
+                                            "mime_type": getattr(
+                                                inline_data, "mime_type", "audio/pcm"
+                                            ),
+                                            "data": encoded,
+                                        }
+                                    )
+
+                        # ── Turn complete ─────────────────────────────────────
+                        if getattr(server_content, "turn_complete", False):
+                            await self._event_queue.put({"type": "turn_complete"})
+
+                        # ── Input transcription (user speech → text) ──────────
+                        # Check inside server_content first, then top-level fallback
+                        input_tx = getattr(server_content, "input_transcription", None)
+                        if input_tx:
+                            text = (
+                                getattr(input_tx, "text", None)
+                                or getattr(input_tx, "transcript", None)
+                            )
                             if text:
                                 await self._event_queue.put(
-                                    {
-                                        "type": "assistant_text",
-                                        "text": text,
-                                    }
+                                    {"type": "user_transcript", "text": text}
                                 )
 
-                            if inline_data and getattr(inline_data, "data", None):
-                                encoded = base64.b64encode(inline_data.data).decode("utf-8")
+                        # ── Output transcription (model speech → text) ─────────
+                        output_tx = getattr(server_content, "output_transcription", None)
+                        if output_tx:
+                            text = (
+                                getattr(output_tx, "text", None)
+                                or getattr(output_tx, "transcript", None)
+                            )
+                            if text:
                                 await self._event_queue.put(
-                                    {
-                                        "type": "assistant_audio_chunk",
-                                        "mime_type": getattr(inline_data, "mime_type", "audio/pcm"),
-                                        "data": encoded,
-                                    }
+                                    {"type": "assistant_transcript", "text": text}
                                 )
 
-                    if turn_complete:
-                        await self._event_queue.put({"type": "turn_complete"})
-
-                input_tx = getattr(message, "input_transcription", None)
-                if input_tx:
-                    text = getattr(input_tx, "text", None) or getattr(input_tx, "transcript", None)
-                    if text:
-                        await self._event_queue.put(
-                            {
-                                "type": "user_transcript",
-                                "text": text,
-                            }
+                    # ── Top-level transcription fallback (older SDK versions) ──
+                    top_input_tx = getattr(message, "input_transcription", None)
+                    if top_input_tx and not server_content:
+                        text = (
+                            getattr(top_input_tx, "text", None)
+                            or getattr(top_input_tx, "transcript", None)
                         )
+                        if text:
+                            await self._event_queue.put(
+                                {"type": "user_transcript", "text": text}
+                            )
 
-                output_tx = getattr(message, "output_transcription", None)
-                if output_tx:
-                    text = getattr(output_tx, "text", None) or getattr(output_tx, "transcript", None)
-                    if text:
-                        await self._event_queue.put(
-                            {
-                                "type": "assistant_transcript",
-                                "text": text,
-                            }
+                    top_output_tx = getattr(message, "output_transcription", None)
+                    if top_output_tx and not server_content:
+                        text = (
+                            getattr(top_output_tx, "text", None)
+                            or getattr(top_output_tx, "transcript", None)
                         )
+                        if text:
+                            await self._event_queue.put(
+                                {"type": "assistant_transcript", "text": text}
+                            )
+
+        except asyncio.CancelledError:
+            raise  # Let task cancellation propagate; finally still emits runtime_closed
         except ConnectionClosedOK:
-            # 正常关闭，不当成错误
             pass
         except genai_errors.APIError as exc:
-            # Gemini Live sometimes surfaces normal close as APIError 1000
+            # Gemini Live sometimes surfaces a normal close as APIError 1000
             if getattr(exc, "status_code", None) == 1000 or str(exc).startswith("1000"):
                 pass
             else:

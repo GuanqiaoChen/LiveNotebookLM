@@ -72,15 +72,35 @@ class CreateSessionResponse(BaseModel):
     created_at: datetime
 
 
-class AddWebSourcesRequest(BaseModel):
-    query: str
-    current_source_count: int = 0
-
-
-class WebSearchResult(BaseModel):
+class WebSearchResultItem(BaseModel):
+    """A single web search result candidate (not yet saved as a source)."""
     title: str
     url: str
     snippet: str
+
+
+class WebSearchRequest(BaseModel):
+    query: str
+    pending_count: int = 0  # checked results not yet added to session
+
+
+class WebSearchResponse(BaseModel):
+    results: list[WebSearchResultItem]
+    remaining_capacity: int  # how many more sources this session can accept
+
+
+class AddWebSourcesRequest(BaseModel):
+    """Commit checked web-search results as actual session sources."""
+    results: list[WebSearchResultItem]
+
+
+class AddWebSourcesResponse(BaseModel):
+    added: list[SourceMetadata]
+    remaining_capacity: int
+
+
+# Backward-compat alias
+WebSearchResult = WebSearchResultItem
 
 
 class RecapData(BaseModel):

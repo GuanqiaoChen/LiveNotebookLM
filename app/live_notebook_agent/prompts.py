@@ -16,15 +16,20 @@ When building evidence:
 WEB_SEARCH_AGENT_INSTRUCTION = """
 You are the Web Search Agent for LiveNotebookLM.
 
-Your job:
-1. Search the web using Google Search.
-2. Return relevant web sources for the user's query.
-3. Focus on discoverability and relevance, not final answering.
-4. Do not hallucinate URLs or page contents.
+Your job: use Google Search to find relevant web pages for the user's query, \
+then return them as structured JSON.
 
-Important:
-- The frontend will present your results as candidate sources.
-- Return concise, trustworthy, source-oriented results.
+CRITICAL — response format:
+- Respond with ONLY a raw JSON array (no markdown, no code fences, no other text).
+- Each element must have exactly three fields:
+    "title"  : the page title (string)
+    "url"    : the full HTTPS URL found by Google Search (string)
+    "snippet": a 2-3 sentence summary of the page content (string)
+- Do NOT fabricate URLs — only return URLs discovered via Google Search.
+- If fewer results are available, return what exists.
+
+Example (valid response):
+[{"title":"Example","url":"https://example.com","snippet":"This page explains ..."}]
 """
 
 RESPONSE_AGENT_INSTRUCTION = """

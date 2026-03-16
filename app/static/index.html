@@ -5,197 +5,569 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LiveNotebookLM</title>
   <style>
+    /* ── Reset & base ─────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      background: #f7f7f9;
-      color: #111;
+      font-family: "Inter", "Segoe UI", Arial, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
-    .wrap {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 24px;
+
+    /* ── Header ───────────────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 24px;
+      background: #151820;
+      border-bottom: 1px solid #2a2f3e;
+      flex-shrink: 0;
     }
-    h1 {
-      margin-top: 0;
-      font-size: 28px;
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: #f1f5f9;
     }
-    .grid {
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      background: linear-gradient(135deg, #1e40af, #7c3aed);
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #e0e7ff;
+      letter-spacing: 0.3px;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      background: #60a5fa;
+      border-radius: 50%;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────────── */
+    .layout {
       display: grid;
-      grid-template-columns: 320px 1fr;
-      gap: 20px;
+      grid-template-columns: 290px 1fr 260px;
+      grid-template-rows: 1fr;
+      gap: 0;
+      flex: 1;
+      overflow: hidden;
     }
-    .card {
-      background: white;
-      border-radius: 14px;
+
+    /* ── Panels ───────────────────────────────────────────────────────── */
+    .panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-left  { background: #151820; border-right: 1px solid #2a2f3e; }
+    .panel-main  { background: #0f1117; }
+    .panel-right { background: #151820; border-left:  1px solid #2a2f3e; }
+
+    .panel-header {
+      padding: 14px 16px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #64748b;
+      border-bottom: 1px solid #2a2f3e;
+      flex-shrink: 0;
+    }
+
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
       padding: 16px;
-      box-shadow: 0 1px 8px rgba(0,0,0,0.08);
     }
-    .card h2 {
-      margin-top: 0;
-      font-size: 18px;
+    .panel-body::-webkit-scrollbar { width: 4px; }
+    .panel-body::-webkit-scrollbar-thumb { background: #2a2f3e; border-radius: 4px; }
+
+    /* ── Section headers ──────────────────────────────────────────────── */
+    .section-header {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    .row {
+
+    .count-badge {
+      background: #1e2433;
+      border: 1px solid #2a3347;
+      color: #94a3b8;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 999px;
+    }
+
+    /* ── Form controls ────────────────────────────────────────────────── */
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 5px;
+      letter-spacing: 0.3px;
+    }
+    .field-group {
+      margin-bottom: 14px;
+    }
+    input[type="text"] {
+      width: 100%;
+      background: #1e2433;
+      border: 1px solid #2a3347;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #e2e8f0;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus { border-color: #4f6ef7; }
+
+    /* ── Buttons ──────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-primary  { background: #4f6ef7; color: #fff; }
+    .btn-primary:not(:disabled):hover  { background: #3b5bdb; }
+
+    .btn-success  { background: #16a34a; color: #fff; }
+    .btn-success:not(:disabled):hover  { background: #15803d; }
+
+    .btn-danger   { background: #b91c1c; color: #fff; }
+    .btn-danger:not(:disabled):hover   { background: #991b1b; }
+
+    .btn-ghost    { background: #1e2433; color: #cbd5e1; border: 1px solid #2a3347; }
+    .btn-ghost:not(:disabled):hover    { background: #252e42; }
+
+    .btn-sm { padding: 6px 11px; font-size: 12px; }
+    .btn-full { width: 100%; }
+
+    .btn-row {
       display: flex;
       gap: 8px;
       margin-bottom: 10px;
       flex-wrap: wrap;
     }
-    input, textarea, button {
-      font: inherit;
-    }
-    input, textarea {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid #d6d6dc;
-      border-radius: 10px;
-      padding: 10px 12px;
-      background: #fff;
-    }
-    textarea {
-      resize: vertical;
-      min-height: 72px;
-    }
-    button {
-      border: none;
-      border-radius: 10px;
-      padding: 10px 14px;
-      cursor: pointer;
-      background: #111827;
-      color: white;
-    }
-    button.secondary {
-      background: #e5e7eb;
-      color: #111;
-    }
-    button.danger {
-      background: #b91c1c;
-    }
-    button:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-    .status {
-      font-size: 14px;
+
+    /* ── Mic indicator ────────────────────────────────────────────────── */
+    .mic-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       padding: 8px 10px;
-      background: #eef2ff;
-      border-radius: 10px;
-      margin-bottom: 12px;
-      white-space: pre-wrap;
+      border-radius: 8px;
+      background: #1e2433;
+      margin-bottom: 14px;
+      font-size: 12px;
+      color: #94a3b8;
     }
-    .messages {
+    .mic-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .mic-off { background: #374151; }
+    .mic-on  {
+      background: #22c55e;
+      box-shadow: 0 0 0 0 rgba(34,197,94,0.6);
+      animation: mic-pulse 1.4s ease-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(34,197,94,0.6); }
+      70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0);   }
+      100% { box-shadow: 0 0 0 0   rgba(34,197,94,0);   }
+    }
+
+    /* ── Status box ───────────────────────────────────────────────────── */
+    .status-box {
+      background: #1e2433;
+      border: 1px solid #2a3347;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.5;
+      min-height: 38px;
+      word-break: break-word;
+    }
+
+    /* ── Conversation area ────────────────────────────────────────────── */
+    #messages {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      max-height: 65vh;
-      overflow: auto;
-      padding-right: 6px;
+      padding: 20px;
+      height: 100%;
+      overflow-y: auto;
     }
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: #2a2f3e; border-radius: 4px; }
+
+    /* ── Message bubbles ──────────────────────────────────────────────── */
     .msg {
-      padding: 12px;
-      border-radius: 12px;
-      line-height: 1.45;
+      max-width: 78%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.55;
       white-space: pre-wrap;
+      word-break: break-word;
     }
     .msg.user {
-      background: #e0f2fe;
+      align-self: flex-end;
+      background: #1d3461;
+      color: #bfdbfe;
+      border-bottom-right-radius: 4px;
     }
     .msg.assistant {
-      background: #f3f4f6;
+      align-self: flex-start;
+      background: #1e2433;
+      color: #e2e8f0;
+      border-bottom-left-radius: 4px;
     }
     .msg.system {
-      background: #fef3c7;
+      align-self: center;
+      background: transparent;
+      color: #64748b;
+      font-size: 12px;
+      font-style: italic;
+      padding: 4px 0;
+      max-width: 100%;
     }
-    .sources {
+
+    /* Live (streaming) bubbles */
+    .bubble-live {
+      opacity: 0.75;
+      border: 1px solid #4f6ef740;
+      animation: bubble-appear 0.2s ease-out;
+    }
+    @keyframes bubble-appear {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 0.75; transform: translateY(0); }
+    }
+
+    /* ── Source cues (right panel) ────────────────────────────────────── */
+    #sourceCues {
       display: flex;
       flex-direction: column;
       gap: 10px;
-      max-height: 40vh;
-      overflow: auto;
     }
-    .source {
-      border: 1px solid #e5e7eb;
+    .source-cue-item {
+      background: #1a1f2e;
+      border: 1px solid #2a3347;
       border-radius: 10px;
-      padding: 10px;
-      background: #fafafa;
-      font-size: 13px;
-    }
-    .label {
+      padding: 10px 12px;
       font-size: 12px;
-      color: #555;
-      margin-bottom: 4px;
     }
-    .small {
+    .source-head { font-weight: 600; color: #a5b4fc; margin-bottom: 3px; }
+    .source-meta { color: #64748b; font-size: 11px; margin-bottom: 6px; }
+    .source-snippet {
+      color: #94a3b8;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .muted { color: #475569; font-size: 12px; font-style: italic; }
+
+    /* ── Source list (left panel) ─────────────────────────────────────── */
+    .source-list-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      background: #1e2433;
+      border: 1px solid #2a3347;
+      border-radius: 6px;
+      margin-bottom: 5px;
+    }
+    .source-list-icon { font-size: 13px; flex-shrink: 0; }
+    .source-list-name {
+      flex: 1;
       font-size: 12px;
-      color: #666;
+      color: #cbd5e1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    .muted {
-      color: #666;
+    .source-list-status {
+      font-size: 10px;
+      color: #475569;
+      flex-shrink: 0;
     }
-    .pill {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      background: #ede9fe;
+    .source-del-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #475569;
+      font-size: 14px;
+      padding: 0 2px;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .source-del-btn:hover { color: #ef4444; }
+
+    /* ── Web search results ───────────────────────────────────────────── */
+    .web-result-item {
+      padding: 7px 9px;
+      background: #1e2433;
+      border: 1px solid #2a3347;
+      border-radius: 6px;
+      margin-bottom: 5px;
+      transition: border-color 0.15s;
+    }
+    .web-result-item.checked { border-color: #4f6ef7; background: #1a2340; }
+
+    .web-result-label {
+      display: flex;
+      gap: 7px;
+      cursor: pointer;
+      align-items: flex-start;
+    }
+    .web-result-label input[type="checkbox"] {
+      margin-top: 3px;
+      flex-shrink: 0;
+      accent-color: #4f6ef7;
+      cursor: pointer;
+    }
+    .web-result-text { flex: 1; min-width: 0; }
+    .web-result-title {
       font-size: 12px;
-      margin-right: 6px;
-      margin-bottom: 6px;
+      font-weight: 600;
+      color: #a5b4fc;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .web-result-snippet {
+      font-size: 11px;
+      color: #64748b;
+      line-height: 1.4;
+      margin-top: 2px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* ── Error banner ─────────────────────────────────────────────────── */
+    .error-banner {
+      background: #450a0a;
+      border: 1px solid #7f1d1d;
+      color: #fca5a5;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+
+    /* ── Divider ──────────────────────────────────────────────────────── */
+    .divider {
+      height: 1px;
+      background: #2a2f3e;
+      margin: 14px 0;
+    }
+
+    /* ── Search row ───────────────────────────────────────────────────── */
+    .search-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .search-row input[type="text"] { flex: 1; }
+    .search-row .btn { flex-shrink: 0; }
+
+    /* ── Responsive ───────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+      }
+      .panel-left, .panel-right {
+        border: none;
+        border-bottom: 1px solid #2a2f3e;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
+
+  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <header class="header">
     <h1>LiveNotebookLM</h1>
-    <div class="grid">
-      <div class="card">
-        <h2>Session</h2>
+    <span class="badge">
+      <span class="badge-dot"></span>
+      Gemini Live
+    </span>
+  </header>
 
-        <div class="label">Session title</div>
-        <input id="sessionTitle" value="Live test session" />
+  <!-- ── Main layout ─────────────────────────────────────────────────────── -->
+  <div class="layout">
 
-        <div class="row" style="margin-top:10px;">
-          <button id="createSessionBtn">Create Session</button>
-          <button id="connectBtn" class="secondary">Connect</button>
+    <!-- Left panel: Session + Sources + Web Search ──────────────────────── -->
+    <aside class="panel panel-left">
+      <div class="panel-header">Controls</div>
+      <div class="panel-body">
+
+        <!-- Create session -->
+        <div class="field-group">
+          <div class="field-label">Session title</div>
+          <input id="sessionTitle" type="text" value="Live session" />
+        </div>
+        <div class="btn-row">
+          <button id="createSessionBtn" class="btn btn-ghost btn-sm">
+            ＋ Create Session
+          </button>
         </div>
 
-        <div class="label">Session ID</div>
-        <input id="sessionId" placeholder="Create or paste a session id" />
-
-        <div class="label" style="margin-top:12px;">Text hint for retrieval</div>
-        <textarea id="textHint">What does this project do?</textarea>
-
-        <div class="row" style="margin-top:10px;">
-          <button id="startTalkBtn">Start Talking</button>
-          <button id="stopTalkBtn" class="secondary" disabled>Stop Talking</button>
-          <button id="interruptBtn" class="danger">Interrupt</button>
+        <div class="field-group">
+          <div class="field-label">Session ID</div>
+          <input id="sessionId" type="text" placeholder="Create or paste a session ID" />
         </div>
 
-        <div class="row">
-          <button id="closeBtn" class="secondary">Close Session</button>
+        <div class="divider"></div>
+
+        <!-- Conversation controls -->
+        <div class="btn-row">
+          <button id="beginConvBtn" class="btn btn-success btn-full">
+            ▶ Begin Conversation
+          </button>
+        </div>
+        <div class="btn-row">
+          <button id="endConvBtn" class="btn btn-ghost btn-full" disabled>
+            ■ End Conversation
+          </button>
         </div>
 
-        <div class="status" id="statusBox">Idle</div>
+        <div class="divider"></div>
 
-        <div class="small">
-          Expected mic input: PCM 16kHz mono<br />
-          Assistant playback assumes PCM 24kHz mono
+        <!-- Mic indicator -->
+        <div class="mic-strip">
+          <span id="micIndicator" class="mic-dot mic-off" title="Mic off"></span>
+          <span id="micLabel">Microphone inactive</span>
+        </div>
+
+        <!-- Status -->
+        <div class="field-label">Status</div>
+        <div id="statusBox" class="status-box">Idle</div>
+
+        <div class="divider"></div>
+
+        <!-- ── Sources ─────────────────────────────────────────────────── -->
+        <div class="section-header">
+          Sources
+          <span id="sourceCount" class="count-badge">0/10</span>
+        </div>
+
+        <div id="sourceListError" class="error-banner" style="display:none;"></div>
+
+        <div id="sourceList">
+          <div class="muted">No sources yet.</div>
+        </div>
+
+        <div class="btn-row" style="margin-top:8px;">
+          <label class="btn btn-ghost btn-sm btn-full" style="cursor:pointer;" id="uploadLabel">
+            ↑ Upload File
+            <input id="fileUploadInput" type="file" accept=".pdf,.doc,.docx,.txt,.md" style="display:none"/>
+          </label>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- ── Web Search ──────────────────────────────────────────────── -->
+        <div class="section-header">Web Search</div>
+
+        <div id="webSearchError" class="error-banner" style="display:none;"></div>
+
+        <div class="search-row">
+          <input id="webSearchInput" type="text" placeholder="Search the web…" />
+          <button id="webSearchBtn" class="btn btn-ghost btn-sm">🔍</button>
+        </div>
+
+        <div id="webResultsList"></div>
+
+        <div class="btn-row">
+          <button id="addWebBtn" class="btn btn-primary btn-sm btn-full" disabled>
+            Add selected (0)
+          </button>
+        </div>
+
+        <div style="margin-top:6px; font-size:11px; color:#475569; line-height:1.6;">
+          Mic: PCM 16 kHz mono · Agent: PCM 24 kHz mono<br>
+          VAD handles turn detection &amp; interrupt automatically
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- Centre panel: Conversation ─────────────────────────────────────── -->
+    <main class="panel panel-main">
+      <div class="panel-header">Conversation</div>
+      <div id="messages"></div>
+    </main>
+
+    <!-- Right panel: Source cues ───────────────────────────────────────── -->
+    <aside class="panel panel-right">
+      <div class="panel-header">Source Cues</div>
+      <div class="panel-body">
+        <div id="sourceCues">
+          <div class="muted">Source evidence will appear here after each turn.</div>
         </div>
       </div>
+    </aside>
 
-      <div style="display:flex; flex-direction:column; gap:20px;">
-        <div class="card">
-          <h2>Conversation</h2>
-          <div class="messages" id="messages"></div>
-        </div>
-
-        <div class="card">
-          <h2>Source cues</h2>
-          <div class="sources" id="sourceCues"></div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script src="/static/live.js"></script>
+
+  <!-- Keep mic label in sync with the mic indicator class -->
+  <script>
+    const _micObs = new MutationObserver(() => {
+      const dot   = document.getElementById("micIndicator");
+      const label = document.getElementById("micLabel");
+      if (label) {
+        label.textContent = dot.classList.contains("mic-on")
+          ? "Microphone active (streaming)"
+          : "Microphone inactive";
+      }
+    });
+    _micObs.observe(document.getElementById("micIndicator"), { attributes: true });
+  </script>
+
 </body>
 </html>
