@@ -235,8 +235,15 @@ class LiveRuntime:
         except ConnectionClosedOK:
             pass
         except genai_errors.APIError as exc:
-            # Gemini Live sometimes surfaces a normal close as APIError 1000
-            if getattr(exc, "status_code", None) == 1000 or str(exc).startswith("1000"):
+            # Gemini Live closes normally (1000) or after idle silence (1007).
+            # Both are graceful closes, not errors.
+            status = getattr(exc, "status_code", None)
+            msg = str(exc)
+            if (
+                status in (1000, 1007)
+                or msg.startswith("1000")
+                or msg.startswith("1007")
+            ):
                 pass
             else:
                 await self._event_queue.put(

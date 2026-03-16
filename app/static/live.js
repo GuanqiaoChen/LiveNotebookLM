@@ -24,6 +24,8 @@ const state = {
   startupFailed: false,
   sessionSourceCount: 0,
   recapData: null,
+  currentSources: [],   // tracks uploaded sources for web-result restore
+  titleSet: false,      // true once session title has been auto-set
 
   // Web Audio
   audioContext: null,
@@ -35,6 +37,7 @@ const state = {
   mediaSourceNode: null,
   workletNode: null,
   processorNode: null,
+  _lastSpeechAt: 0,     // timestamp of last audio chunk above energy threshold
 
   // Live transcript bubbles
   liveUserBubble: null,
@@ -184,10 +187,6 @@ function renderSessionList(sessions) {
       item.className = "session-item" + (s.session_id === state.sessionId ? " active" : "");
       item.dataset.sessionId = s.session_id;
 
-      const icon = document.createElement("span");
-      icon.className = "session-item-icon";
-      icon.textContent = "💬";
-
       const title = document.createElement("span");
       title.className = "session-item-title";
       title.textContent = s.title || "Untitled session";
@@ -196,7 +195,6 @@ function renderSessionList(sessions) {
       cnt.className = "session-count";
       if (s.message_count) cnt.textContent = s.message_count;
 
-      item.appendChild(icon);
       item.appendChild(title);
       item.appendChild(cnt);
       item.addEventListener("click", () => selectSession(s.session_id, s.title));
@@ -212,6 +210,7 @@ async function selectSession(sessionId, title) {
   }
 
   state.sessionId = sessionId;
+  state.titleSet = true; // don't auto-title existing sessions
 
   // Highlight active session
   document.querySelectorAll(".session-item").forEach(el => {
@@ -273,6 +272,7 @@ async function loadSources() {
 }
 
 function renderSources(sources) {
+  state.currentSources = sources;
   els.sourceCount.textContent = `${sources.length}/10`;
   els.sourceList.innerHTML = "";
   showSourceError("");
@@ -321,9 +321,20 @@ function renderSources(sources) {
 
 async function deleteSource(sourceId) {
   if (!state.sessionId) return;
+  const srcToDelete = state.currentSources.find(s => s.source_id === sourceId);
   try {
     const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/${sourceId}`, { method: "DELETE" });
     if (!res.ok) { const e = await res.json().catch(() => ({})); showSourceError(e.detail || "Delete failed"); return; }
+    // Restore web results back to the search panel so they can be re-added
+    if (srcToDelete && srcToDelete.kind === "web_result") {
+      webState.results.unshift({
+        title: srcToDelete.display_name || srcToDelete.original_filename || "",
+        url: srcToDelete.source_url || "",
+        snippet: "",
+        checked: false,
+      });
+      renderWebResults();
+    }
     await loadSources();
   } catch (e) { showSourceError(String(e)); }
 }
@@ -428,7 +439,7 @@ async function performWebSearch() {
   webState.searching = true;
   showWebError("");
   els.webSearchBtn.disabled = true;
-  els.webSearchBtn.textContent = "…";
+  els.webSearchBtn.textContent = "Searching…";
 
   try {
     const kept = checkedResults();
@@ -450,7 +461,7 @@ async function performWebSearch() {
     renderWebResults();
 
   } catch (e) { showWebError(String(e)); }
-  finally { webState.searching = false; els.webSearchBtn.disabled = false; els.webSearchBtn.textContent = "🔍"; }
+  finally { webState.searching = false; els.webSearchBtn.disabled = false; els.webSearchBtn.textContent = "Search"; }
 }
 
 async function addSelectedWebSources() {
@@ -464,6 +475,7 @@ async function addSelectedWebSources() {
   }
 
   els.addWebBtn.disabled = true;
+  els.addWebBtn.textContent = "Adding…";
   showWebError("");
 
   try {
@@ -478,7 +490,8 @@ async function addSelectedWebSources() {
     webState.results = webState.results.filter(r => !r.checked);
     renderWebResults();
     await loadSources();
-  } catch (e) { showWebError(String(e)); els.addWebBtn.disabled = false; }
+  } catch (e) { showWebError(String(e)); }
+  finally { updateAddWebButton(); }
 }
 
 // ── Citations (source cues) ──────────────────────────────────────────────────
@@ -633,6 +646,20 @@ function showFollowUpCard(suggestions) {
   scrollMessages();
 }
 
+// ── Session title ────────────────────────────────────────────────────────────
+
+async function updateSessionTitle(title) {
+  if (!state.sessionId) return;
+  try {
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    if (res.ok) loadSessionList();
+  } catch (_) {}
+}
+
 // ── Audio helpers ────────────────────────────────────────────────────────────
 
 function uint8ArrayToBase64(bytes) {
@@ -716,9 +743,26 @@ function stopAssistantAudio() {
 
 // ── Microphone ───────────────────────────────────────────────────────────────
 
+// Energy gate: skip silent chunks so Gemini doesn't close the session (1007)
+const ENERGY_THRESHOLD = 0.001;
+const SPEECH_TAIL_MS   = 1500;
+
 function _sendAudioChunk(f32, sr) {
   if (!state.conversationActive || !state.runtimeReady) return;
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+
+  // Compute RMS energy
+  let sumSq = 0;
+  for (let i = 0; i < f32.length; i++) sumSq += f32[i] * f32[i];
+  const rms = Math.sqrt(sumSq / f32.length);
+
+  const now = Date.now();
+  if (rms >= ENERGY_THRESHOLD) {
+    state._lastSpeechAt = now;
+  } else if (now - state._lastSpeechAt > SPEECH_TAIL_MS) {
+    return; // pure silence — skip to prevent 1007 idle timeout
+  }
+
   const pcm = floatTo16BitPCM(downsample(f32, sr, USER_PCM_RATE));
   wsSend({ type: "audio_chunk", mime_type: "audio/pcm;rate=16000", data: uint8ArrayToBase64(pcm) });
 }
@@ -857,13 +901,21 @@ function handleServerEvent(payload) {
       setStatus("Interrupted — listening…");
       break;
 
-    case "turn_complete":
-      finaliseBubble(state.liveUserBubble, state.currentUserText);
+    case "turn_complete": {
+      const userText = state.currentUserText;
+      finaliseBubble(state.liveUserBubble, userText);
       state.liveUserBubble = null; state.currentUserText = "";
       finaliseBubble(state.liveAssistantBubble, state.currentAssistantText || "(audio response)");
       state.liveAssistantBubble = null; state.currentAssistantText = "";
       if (state.conversationActive) setStatus("Listening…");
+      // Auto-title the session from the first user utterance
+      if (!state.titleSet && userText) {
+        state.titleSet = true;
+        const title = userText.length > 45 ? userText.slice(0, 45).trimEnd() + "…" : userText;
+        updateSessionTitle(title);
+      }
       break;
+    }
 
     case "source_cues":
       renderCitations(payload.evidence || []);
@@ -905,14 +957,17 @@ async function beginConversation() {
 
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
     setStatus("Connecting…");
+    els.beginBtn.textContent = "Connecting…";
     await openWebSocket(state.sessionId);
   }
 
   setStatus("Starting Gemini Live…");
+  els.beginBtn.textContent = "Starting…";
   wsSend({ type: "begin_conversation" });
 
   await waitFor(() => state.runtimeReady || state.startupFailed, 90_000, "Gemini Live startup timed out");
   if (!state.runtimeReady) throw new Error("Gemini Live failed to start. Check credentials.");
+  els.beginBtn.textContent = "▶ Begin";
 
   await startMic();
   setStatus("Listening — speak naturally");
@@ -967,6 +1022,7 @@ els.newChatBtn.addEventListener("click", async () => {
     state.sessionId = data.session_id;
     state.sessionSourceCount = 0;
     state.recapData = null;
+    state.titleSet = false; // allow auto-titling from first utterance
 
     els.messages.innerHTML = "";
     renderSources([]);
@@ -993,6 +1049,7 @@ els.beginBtn.addEventListener("click", async () => {
     await beginConversation();
   } catch (e) {
     state.conversationActive = false;
+    els.beginBtn.textContent = "▶ Begin";
     updateButtons();
     setStatus(String(e));
     addSystemMessage(`Error: ${e}`);

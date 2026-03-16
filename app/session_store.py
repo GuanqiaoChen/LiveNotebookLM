@@ -101,6 +101,13 @@ class SessionStore:
         metadata.updated_at = datetime.now(timezone.utc)
         self.save_session_metadata(metadata)
 
+    def update_session_title(self, session_id: str, title: str) -> SessionMetadata:
+        metadata = self.get_session_metadata(session_id)
+        metadata.title = title.strip() or "Untitled Session"
+        metadata.updated_at = datetime.now(timezone.utc)
+        self.save_session_metadata(metadata)
+        return metadata
+
     def mark_session_ended(self, session_id: str) -> SessionMetadata:
         metadata = self.get_session_metadata(session_id)
         metadata.is_active = False

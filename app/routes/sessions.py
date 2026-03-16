@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from app.schemas import (
     CreateSessionRequest,
@@ -45,6 +46,19 @@ async def get_session(session_id: str) -> SessionDetail:
 
     detail.sources = source_store.list_sources(session_id)
     return detail
+
+
+class UpdateSessionTitleRequest(BaseModel):
+    title: str
+
+
+@router.patch("/{session_id}", response_model=SessionMetadata)
+async def update_session_title(session_id: str, payload: UpdateSessionTitleRequest) -> SessionMetadata:
+    store = SessionStore()
+    try:
+        return store.update_session_title(session_id, payload.title)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.delete("/{session_id}")
