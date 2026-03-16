@@ -12,43 +12,43 @@ LiveNotebookLM reimagines Google NotebookLM as a live, voice-first experience. U
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                              BROWSER  (Vanilla JS)                           │
 │                                                                              │
-│  ┌───────────────────┐   ┌──────────────────────┐   ┌────────────────────┐ │
-│  │  Mic capture      │   │  Conversation thread │   │  Right panel       │ │
-│  │  AudioWorklet     │──▶│  • User bubbles      │   │  • Source manager  │ │
-│  │  (audio thread)   │   │  • Agent bubbles     │   │  • Web search      │ │
-│  │  PCM-16 @ 16 kHz  │   │  • Live transcripts  │   │  • Citations       │ │
-│  └────────┬──────────┘   └──────────────────────┘   │  • Recap           │ │
-│           │ base64 audio chunks over WebSocket        └────────────────────┘ │
+│  ┌───────────────────┐   ┌──────────────────────┐   ┌────────────────────┐   │
+│  │  Mic capture      │   │  Conversation thread │   │  Right panel       │   │
+│  │  AudioWorklet     │──▶│  • User bubbles      │   │  • Source manager  │   │
+│  │  (audio thread)   │   │  • Agent bubbles     │   │  • Web search      │   │
+│  │  PCM-16 @ 16 kHz  │   │  • Live transcripts  │   │  • Citations       │   │
+│  └────────┬──────────┘   └──────────────────────┘   │  • Recap           │   │
+│           │ base64 audio chunks over WebSocket      └────────────────────┘   │
 └───────────┼──────────────────────────────────────────────────────────────────┘
             │  WebSocket  /ws/live/{session_id}
             ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                      FASTAPI BACKEND  (Google Cloud Run)                     │
 │                                                                              │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │  ws_handlers.py  —  WebSocket event router                            │  │
-│  │  begin_conversation → audio_chunk → interrupt → end_conversation      │  │
-│  │  per-turn state: user_transcript, assistant_transcript, parts         │  │
-│  └──────────────────────┬─────────────────────┬───────────────────────┘  │
-│                         │                     │                             │
+│  ┌───────────────────────────────────────────────────────────────────────┐   │
+│  │  ws_handlers.py  —  WebSocket event router                            │   │
+│  │  begin_conversation → audio_chunk → interrupt → end_conversation      │   │
+│  │  per-turn state: user_transcript, assistant_transcript, parts         │   │
+│  └──────────────────────┬─────────────────────┬──────────────────────────┘   │
+│                         │                     │                              │
 │              ┌──────────▼──────────┐  ┌───────▼────────────────────────┐  │
-│              │    LiveRuntime      │  │      LiveOrchestrator           │  │
-│              │                     │  │                                 │  │
-│              │  Wraps Gemini Live  │  │  record_user_message()          │  │
-│              │  session            │  │  record_assistant_message()     │  │
-│              │  send_audio_chunk() │  │  prepare_grounded_turn()        │  │
-│              │  receive_events()   │  │    → RAG retrieve → citations   │  │
-│              │  _receiver_loop()   │  │    → evidence to frontend       │  │
+│              │    LiveRuntime      │  │      LiveOrchestrator          │  │
+│              │                     │  │                                │  │
+│              │  Wraps Gemini Live  │  │  record_user_message()         │  │
+│              │  session            │  │  record_assistant_message()    │  │
+│              │  send_audio_chunk() │  │  prepare_grounded_turn()       │  │
+│              │  receive_events()   │  │    → RAG retrieve → citations  │  │
+│              │  _receiver_loop()   │  │    → evidence to frontend      │  │
 │              └──────────┬──────────┘  └───────┬────────────────────────┘  │
-│                         │                     │                             │
+│                         │                     │                            │
 │                         │           ┌─────────▼──────────────────────────┐ │
 │                         │           │  SessionStore  │  MemoryManager    │ │
 │                         │           │  session.json  │  rolling summary  │ │
 │                         │           │  messages.json │  recent turns     │ │
 │                         │           │  recap.json    │  open questions   │ │
-│                         │           └────────────────┴──────────────┬───┘ │
-│                         │                                            │      │
-└─────────────────────────┼────────────────────────────────────────────┼──────┘
+│                         │           └────────────────┴──────────────┬───┘  │
+│                         │                                           │      │
+└─────────────────────────┼───────────────────────────────────────────┼──────┘
                           │ bidirectional                               │ async
                           │ audio + events                              │ backup
                           ▼                                             ▼
@@ -72,20 +72,20 @@ LiveNotebookLM reimagines Google NotebookLM as a live, voice-first experience. U
                        RAG PIPELINE  (after every completed turn)
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                                                                              │
-│  Source upload  ──▶  SourceProcessor  ──▶  Vertex AI text-embedding-004    │
-│  (PDF / DOCX /         chunk + metadata         (3072 dims)                 │
-│   web snippet)                │                      │                      │
-│                               │                      ▼                      │
-│                               └─────────────▶  Pinecone upsert             │
-│                                                 (namespace per session)     │
+│  Source upload  ──▶  SourceProcessor  ──▶  Vertex AI text-embedding-004     │
+│  (PDF / DOCX /         chunk + metadata         (3072 dims)                  │
+│   web snippet)                │                      │                       │
+│                               │                      ▼                       │
+│                               └─────────────▶  Pinecone upsert              │
+│                                                 (namespace per session)      │
 │                                                                              │
-│  User question  ──▶  Vertex AI embedding  ──▶  Pinecone top-k query        │
-│  (transcript)                                        │                      │
-│                                                      ▼                      │
-│                              Retrieved chunks  ──▶  Citations panel        │
-│                              (evidence)        ──▶  System instruction     │
+│  User question  ──▶  Vertex AI embedding  ──▶  Pinecone top-k query         │
+│  (transcript)                                        │                       │
+│                                                      ▼                       │
+│                              Retrieved chunks  ──▶  Citations panel         │
+│                              (evidence)        ──▶  System instruction      │
 │                                                                              │
-│  Fallback (Pinecone not configured):  keyword search over local chunks/     │
+│  Fallback (Pinecone not configured):  keyword search over local chunks/      │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -167,6 +167,10 @@ LiveNotebookLM/
 │   ├── live_notebook_agent/
 │   │   └── sub_agents/
 │   │       ├── live_orchestrator.py  # Turn recording + RAG trigger
+│   │       ├── recap_manager.py      # Generate and save note based on talking history
+│   │       ├── response_agent.py     # Final response management
+│   │       ├── source_agent.py       # Organize retrieved source evidence into a grounded bundle
+│   │       ├── web_search_agent.py   # Web search sources
 │   │       └── retriever.py          # Pinecone + local keyword fallback
 │   └── static/
 │       ├── index.html                # Single-page application
