@@ -339,13 +339,16 @@ async def _forward_runtime_events(
                 turn_state["user_transcript"] = text
 
         elif event_type == "assistant_transcript":
-            # Gemini output_audio_transcription is CUMULATIVE — always replace
+            # output_audio_transcription arrives word-by-word (incremental) — append
             text = (event.get("text") or "").strip()
             if text:
-                turn_state["assistant_transcript"] = text
+                turn_state["assistant_transcript"] += (
+                    " " if turn_state["assistant_transcript"] else ""
+                ) + text
 
         elif event_type == "assistant_text":
-            # model_turn parts are INCREMENTAL — always append
+            # model_turn text parts overlap with output_audio_transcription —
+            # only use as fallback (stored separately, not mixed in)
             text = (event.get("text") or "").strip()
             if text:
                 turn_state["assistant_parts"].append(text)

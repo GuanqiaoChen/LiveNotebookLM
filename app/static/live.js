@@ -900,18 +900,7 @@ function handleServerEvent(payload) {
     }
 
     case "assistant_transcript": {
-      // Gemini output_audio_transcription is CUMULATIVE — replace, don't append
-      const text = (payload.text || "").trim();
-      if (!text) break;
-      state.currentAssistantText = text;
-      if (!state.liveAssistantBubble) state.liveAssistantBubble = createLiveBubble("assistant");
-      state.liveAssistantBubble.textContent = `🔊 ${state.currentAssistantText}`;
-      scrollMessages();
-      break;
-    }
-
-    case "assistant_text": {
-      // model_turn parts are INCREMENTAL — append
+      // output_audio_transcription arrives word-by-word (incremental) — append
       const text = (payload.text || "").trim();
       if (!text) break;
       state.currentAssistantText += (state.currentAssistantText ? " " : "") + text;
@@ -920,6 +909,11 @@ function handleServerEvent(payload) {
       scrollMessages();
       break;
     }
+
+    case "assistant_text":
+      // model_turn text parts overlap with output_audio_transcription — ignore
+      // to avoid duplicating the same speech in the transcript bubble
+      break;
 
     case "assistant_audio_chunk":
       enqueueAssistantAudio(payload.data);

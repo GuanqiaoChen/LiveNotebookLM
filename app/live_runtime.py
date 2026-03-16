@@ -178,10 +178,6 @@ class LiveRuntime:
                                         }
                                     )
 
-                        # ── Turn complete ─────────────────────────────────────
-                        if getattr(server_content, "turn_complete", False):
-                            await self._event_queue.put({"type": "turn_complete"})
-
                         # ── Input transcription (user speech → text) ──────────
                         # Check inside server_content first, then top-level fallback
                         input_tx = getattr(server_content, "input_transcription", None)
@@ -196,6 +192,8 @@ class LiveRuntime:
                                 )
 
                         # ── Output transcription (model speech → text) ─────────
+                        # Must be enqueued BEFORE turn_complete so the frontend
+                        # receives the final transcript before it finalises the bubble.
                         output_tx = getattr(server_content, "output_transcription", None)
                         if output_tx:
                             text = (
@@ -206,6 +204,10 @@ class LiveRuntime:
                                 await self._event_queue.put(
                                     {"type": "assistant_transcript", "text": text}
                                 )
+
+                        # ── Turn complete ─────────────────────────────────────
+                        if getattr(server_content, "turn_complete", False):
+                            await self._event_queue.put({"type": "turn_complete"})
 
                     # ── Top-level transcription fallback (older SDK versions) ──
                     top_input_tx = getattr(message, "input_transcription", None)
