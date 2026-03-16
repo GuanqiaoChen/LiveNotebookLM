@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 
 from app.config import get_settings
+from app.gcs_backup import schedule_backup
 from app.live_runtime import LiveRuntime
 from app.live_notebook_agent.sub_agents.live_orchestrator import LiveOrchestrator
 from app.session_store import SessionStore
@@ -122,11 +123,13 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
     runtime_closed_event = asyncio.Event()
 
     # Per-turn mutable state shared with the receiver task.
-    # user_transcript: rolling cumulative text (replaced, not appended)
-    # assistant_parts: accumulated text fragments (appended)
+    # user_transcript:     rolling cumulative text from input_transcription  (replaced)
+    # assistant_transcript: rolling cumulative text from output_transcription (replaced)
+    # assistant_parts:     incremental text fragments from assistant_text     (appended)
     turn_state: dict = {
         "user_transcript": "",
-        "assistant_parts": [],
+        "assistant_transcript": "",  # cumulative output transcription — always replace
+        "assistant_parts": [],       # incremental text parts — always append
     }
 
     async def _start_runtime() -> None:
@@ -228,7 +231,10 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
                 # Save whatever partial turn exists
                 if orchestrator is not None:
                     user_text = turn_state["user_transcript"]
-                    assistant_text = " ".join(turn_state["assistant_parts"]).strip()
+                    assistant_text = (
+                        turn_state["assistant_transcript"]
+                        or " ".join(turn_state["assistant_parts"])
+                    ).strip()
                     if user_text:
                         orchestrator.record_user_message(
                             session_id, user_text, interrupted=True
@@ -238,6 +244,7 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
                             session_id, assistant_text, interrupted=True
                         )
                 turn_state["user_transcript"] = ""
+                turn_state["assistant_transcript"] = ""
                 turn_state["assistant_parts"].clear()
 
                 await websocket.send_json({"type": "interrupt_ack"})
@@ -270,11 +277,16 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
                 # Flush any pending turn data before closing
                 if orchestrator is not None:
                     user_text = turn_state["user_transcript"]
-                    assistant_text = " ".join(turn_state["assistant_parts"]).strip()
+                    assistant_text = (
+                        turn_state["assistant_transcript"]
+                        or " ".join(turn_state["assistant_parts"])
+                    ).strip()
                     if user_text:
                         orchestrator.record_user_message(session_id, user_text)
                     if assistant_text:
                         orchestrator.record_assistant_message(session_id, assistant_text)
+                # Fire-and-forget GCS backup so data persists across restarts
+                schedule_backup(session_id)
                 break
 
     except WebSocketDisconnect:
@@ -326,23 +338,38 @@ async def _forward_runtime_events(
                 # Gemini sends cumulative rolling transcripts → always replace
                 turn_state["user_transcript"] = text
 
-        elif event_type in {"assistant_text", "assistant_transcript"}:
+        elif event_type == "assistant_transcript":
+            # Gemini output_audio_transcription is CUMULATIVE — always replace
+            text = (event.get("text") or "").strip()
+            if text:
+                turn_state["assistant_transcript"] = text
+
+        elif event_type == "assistant_text":
+            # model_turn parts are INCREMENTAL — always append
             text = (event.get("text") or "").strip()
             if text:
                 turn_state["assistant_parts"].append(text)
 
         elif event_type == "assistant_interrupted":
             # VAD detected user speaking mid-response: flush partial assistant turn
-            assistant_text = " ".join(turn_state["assistant_parts"]).strip()
+            assistant_text = (
+                turn_state["assistant_transcript"]
+                or " ".join(turn_state["assistant_parts"])
+            ).strip()
             if assistant_text:
                 orchestrator.record_assistant_message(
                     session_id, assistant_text, interrupted=True
                 )
+            turn_state["assistant_transcript"] = ""
             turn_state["assistant_parts"].clear()
 
         elif event_type == "turn_complete":
             user_text = turn_state["user_transcript"]
-            assistant_text = " ".join(turn_state["assistant_parts"]).strip()
+            # Prefer cumulative output transcription; fall back to incremental parts
+            assistant_text = (
+                turn_state["assistant_transcript"]
+                or " ".join(turn_state["assistant_parts"])
+            ).strip()
 
             # Persist completed turn
             if user_text:
@@ -350,7 +377,10 @@ async def _forward_runtime_events(
             if assistant_text:
                 orchestrator.record_assistant_message(session_id, assistant_text)
 
-            # Trigger RAG to populate source cues panel
+            # Trigger RAG: forward evidence to the frontend citations panel.
+            # NOTE: do NOT inject grounded_prompt back into Gemini via
+            # send_turn_context() — that races with the user's next live-audio
+            # turn and causes Gemini to drop their speech (interrupt instability).
             if user_text:
                 try:
                     grounded = orchestrator.prepare_grounded_turn(
@@ -364,7 +394,9 @@ async def _forward_runtime_events(
                     pass
 
             turn_state["user_transcript"] = ""
+            turn_state["assistant_transcript"] = ""
             turn_state["assistant_parts"].clear()
+            schedule_backup(session_id)  # persist completed turn to GCS
 
         if event_type in {"runtime_error", "runtime_closed"}:
             runtime_closed_event.set()

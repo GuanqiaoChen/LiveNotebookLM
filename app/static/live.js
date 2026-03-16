@@ -38,12 +38,18 @@ const state = {
   workletNode: null,
   processorNode: null,
   _lastSpeechAt: 0,     // timestamp of last audio chunk above energy threshold
+  _lastKeepaliveAt: 0,  // timestamp of last keepalive audio chunk sent during silence
 
   // Live transcript bubbles
   liveUserBubble: null,
   liveAssistantBubble: null,
   currentUserText: "",
   currentAssistantText: "",
+
+  // Pending user bubble: held for 350 ms after turn_complete to catch
+  // late-arriving final ASR transcripts from Gemini before we finalise
+  pendingUserBubble: null,
+  _pendingUserBubbleTimer: null,
 };
 
 // Web search results: [{ title, url, snippet, checked }]
@@ -743,9 +749,11 @@ function stopAssistantAudio() {
 
 // ── Microphone ───────────────────────────────────────────────────────────────
 
-// Energy gate: skip silent chunks so Gemini doesn't close the session (1007)
+// Energy gate: reduce silent chunks to prevent 1007, but still send keepalive
+// audio every KEEPALIVE_MS to prevent 1006 (abnormal closure from inactivity).
 const ENERGY_THRESHOLD = 0.001;
 const SPEECH_TAIL_MS   = 1500;
+const KEEPALIVE_MS     = 3000; // max silence gap before sending a keepalive chunk
 
 function _sendAudioChunk(f32, sr) {
   if (!state.conversationActive || !state.runtimeReady) return;
@@ -758,9 +766,18 @@ function _sendAudioChunk(f32, sr) {
 
   const now = Date.now();
   if (rms >= ENERGY_THRESHOLD) {
+    // Active speech — send immediately and reset both timers
     state._lastSpeechAt = now;
+    state._lastKeepaliveAt = now;
   } else if (now - state._lastSpeechAt > SPEECH_TAIL_MS) {
-    return; // pure silence — skip to prevent 1007 idle timeout
+    // Silence period: only send a keepalive chunk every KEEPALIVE_MS.
+    // This prevents Gemini from closing the session (1006) due to inactivity
+    // while still avoiding 1007 from too much dense silence.
+    if (now - state._lastKeepaliveAt < KEEPALIVE_MS) {
+      return; // skip — next keepalive not due yet
+    }
+    state._lastKeepaliveAt = now;
+    // fall through and send one sparse keepalive chunk
   }
 
   const pcm = floatTo16BitPCM(downsample(f32, sr, USER_PCM_RATE));
@@ -868,6 +885,13 @@ function handleServerEvent(payload) {
     case "user_transcript": {
       const text = (payload.text || "").trim();
       if (!text) break;
+      // If we're in the 350 ms pending window after turn_complete, update
+      // the already-finalised bubble with the late-arriving ASR text
+      if (state.pendingUserBubble) {
+        state.pendingUserBubble.textContent = text;
+        state.pendingUserBubble.dataset.pending = "false";
+        break;
+      }
       state.currentUserText = text;
       if (!state.liveUserBubble) state.liveUserBubble = createLiveBubble("user");
       state.liveUserBubble.textContent = `🎤 ${text}`;
@@ -875,8 +899,19 @@ function handleServerEvent(payload) {
       break;
     }
 
-    case "assistant_transcript":
+    case "assistant_transcript": {
+      // Gemini output_audio_transcription is CUMULATIVE — replace, don't append
+      const text = (payload.text || "").trim();
+      if (!text) break;
+      state.currentAssistantText = text;
+      if (!state.liveAssistantBubble) state.liveAssistantBubble = createLiveBubble("assistant");
+      state.liveAssistantBubble.textContent = `🔊 ${state.currentAssistantText}`;
+      scrollMessages();
+      break;
+    }
+
     case "assistant_text": {
+      // model_turn parts are INCREMENTAL — append
       const text = (payload.text || "").trim();
       if (!text) break;
       state.currentAssistantText += (state.currentAssistantText ? " " : "") + text;
@@ -898,15 +933,42 @@ function handleServerEvent(payload) {
         state.liveAssistantBubble = null;
         state.currentAssistantText = "";
       }
+      // Flush any pending user bubble immediately (don't wait for the 350 ms timer)
+      if (state.pendingUserBubble) {
+        clearTimeout(state._pendingUserBubbleTimer);
+        finaliseBubble(state.pendingUserBubble, state.pendingUserBubble.textContent.replace(/^🎤\s*/, "") || "");
+        state.pendingUserBubble = null;
+        state._pendingUserBubbleTimer = null;
+      }
       setStatus("Interrupted — listening…");
       break;
 
     case "turn_complete": {
       const userText = state.currentUserText;
-      finaliseBubble(state.liveUserBubble, userText);
-      state.liveUserBubble = null; state.currentUserText = "";
+
+      // Finalise assistant bubble immediately
       finaliseBubble(state.liveAssistantBubble, state.currentAssistantText || "(audio response)");
       state.liveAssistantBubble = null; state.currentAssistantText = "";
+
+      // Delay user-bubble finalisation by 350 ms to catch any late-arriving
+      // final ASR transcript from Gemini (cumulative text after turn end)
+      const bubbleToHold = state.liveUserBubble;
+      state.liveUserBubble = null;
+      state.currentUserText = "";
+
+      if (bubbleToHold) {
+        // Promote to pending so user_transcript events can still update it
+        state.pendingUserBubble = bubbleToHold;
+        clearTimeout(state._pendingUserBubbleTimer);
+        state._pendingUserBubbleTimer = setTimeout(() => {
+          finaliseBubble(state.pendingUserBubble, state.pendingUserBubble.textContent.replace(/^🎤\s*/, "") || userText);
+          state.pendingUserBubble = null;
+          state._pendingUserBubbleTimer = null;
+        }, 350);
+      } else {
+        finaliseBubble(null, userText);
+      }
+
       if (state.conversationActive) setStatus("Listening…");
       // Auto-title the session from the first user utterance
       if (!state.titleSet && userText) {
@@ -978,6 +1040,14 @@ async function endConversation() {
   state.conversationActive = false;
   stopMic();
   stopAssistantAudio();
+
+  // Flush pending user bubble timer immediately
+  if (state.pendingUserBubble) {
+    clearTimeout(state._pendingUserBubbleTimer);
+    finaliseBubble(state.pendingUserBubble, state.pendingUserBubble.textContent.replace(/^🎤\s*/, "") || "");
+    state.pendingUserBubble = null;
+    state._pendingUserBubbleTimer = null;
+  }
 
   finaliseBubble(state.liveUserBubble, state.currentUserText);
   state.liveUserBubble = null; state.currentUserText = "";

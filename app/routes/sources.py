@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.config import get_settings
+from app.gcs_backup import schedule_backup
 from app.gcs_store import upload_bytes
 from app.schemas import (
     AddWebSourcesRequest,
@@ -85,7 +86,7 @@ async def upload_source(
             content=content,
         )
 
-        if chunks:
+        if chunks and retriever.is_configured():
             retriever.index_chunks_with_vertex_embeddings(
                 session_id=session_id,
                 chunks=chunks,
@@ -95,6 +96,7 @@ async def upload_source(
         source.chunk_count = len(chunks)
         source_store.update_source(source)
 
+        schedule_backup(session_id)
         return source
 
     except ValueError as exc:
@@ -258,6 +260,7 @@ async def add_web_sources(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    schedule_backup(session_id)
     return AddWebSourcesResponse(
         added=added,
         remaining_capacity=source_store.remaining_capacity(session_id),

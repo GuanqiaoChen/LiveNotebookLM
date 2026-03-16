@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.gcs_backup import schedule_backup
 from app.schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -21,6 +22,7 @@ async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse
     store = SessionStore()
     metadata = store.create_session(payload.title)
 
+    schedule_backup(metadata.session_id)
     return CreateSessionResponse(
         session_id=metadata.session_id,
         title=metadata.title,

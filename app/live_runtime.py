@@ -7,7 +7,7 @@ from typing import Any, AsyncIterator, Optional
 from google import genai
 from google.genai import types
 from google.genai import errors as genai_errors
-from websockets.exceptions import ConnectionClosedOK
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
 from app.config import get_settings
 
@@ -233,15 +233,18 @@ class LiveRuntime:
         except asyncio.CancelledError:
             raise  # Let task cancellation propagate; finally still emits runtime_closed
         except ConnectionClosedOK:
-            pass
+            pass  # 1000 normal close
+        except ConnectionClosedError:
+            pass  # 1006 abnormal closure (network drop / session timeout) — not an error
         except genai_errors.APIError as exc:
-            # Gemini Live closes normally (1000) or after idle silence (1007).
-            # Both are graceful closes, not errors.
+            # Gemini Live closes gracefully (1000), idle-silenced (1007), or
+            # drops the connection (1006 surfaced as APIError in some SDK versions).
             status = getattr(exc, "status_code", None)
             msg = str(exc)
             if (
-                status in (1000, 1007)
+                status in (1000, 1006, 1007)
                 or msg.startswith("1000")
+                or msg.startswith("1006")
                 or msg.startswith("1007")
             ):
                 pass

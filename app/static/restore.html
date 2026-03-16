@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Restore — LiveNotebookLM</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #f5f6fa;
+      color: #111827;
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .header {
+      background: #ffffff;
+      border-bottom: 1px solid #dde1e9;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .header h1 { font-size: 16px; font-weight: 700; color: #111827; }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      color: #2563eb;
+      text-decoration: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      transition: background 0.12s;
+    }
+    .back-link:hover { background: #eff6ff; }
+
+    .page {
+      max-width: 780px;
+      margin: 32px auto;
+      padding: 0 20px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 6px;
+    }
+    .section-desc {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .action-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.13s, opacity 0.13s;
+      white-space: nowrap;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+    .btn-primary { background: #2563eb; color: #fff; box-shadow: 0 1px 2px rgba(37,99,235,0.3); }
+    .btn-primary:not(:disabled):hover { background: #1d4ed8; }
+    .btn-ghost { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .btn-ghost:not(:disabled):hover { background: #e5e7eb; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-success:not(:disabled):hover { background: #15803d; }
+
+    .status-banner {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .status-banner.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+    .status-banner.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .status-banner.error { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .status-banner.show { display: block; }
+
+    .sessions-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .session-card {
+      background: #ffffff;
+      border: 1px solid #e0e4ef;
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      transition: border-color 0.12s;
+    }
+    .session-card:hover { border-color: #c7d2e8; }
+
+    .session-card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: #eff6ff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .session-card-icon svg { width: 18px; height: 18px; color: #2563eb; }
+
+    .session-card-info { flex: 1; min-width: 0; }
+    .session-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .session-card-meta {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-top: 2px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .badge-local { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-cloud { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+    .session-card-actions { flex-shrink: 0; display: flex; gap: 6px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: #9ca3af;
+    }
+    .empty-state p { font-size: 14px; line-height: 1.6; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid currentColor;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #eef0f5;
+      margin: 24px 0;
+    }
+
+    .local-section { margin-top: 32px; }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-left">
+      <a href="/ui" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2L3.5 7l5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Back to app
+      </a>
+      <h1>Backup &amp; Restore</h1>
+    </div>
+  </header>
+
+  <div class="page">
+
+    <div class="section-title">Cloud Backup &amp; Restore</div>
+    <p class="section-desc">
+      All your session data is automatically backed up to Google Cloud Storage after each conversation.
+      Use this page to restore sessions if your local data was lost (e.g. after a server restart).
+    </p>
+
+    <div class="action-bar">
+      <button class="btn btn-primary" id="refreshBtn" onclick="loadBackedUpSessions()">
+        Refresh list
+      </button>
+      <button class="btn btn-ghost" id="restoreAllBtn" onclick="restoreAll()">
+        Restore all missing sessions
+      </button>
+      <button class="btn btn-ghost" id="backupAllBtn" onclick="backupCurrentSessions()">
+        Backup all local sessions
+      </button>
+    </div>
+
+    <div id="statusBanner" class="status-banner"></div>
+
+    <div id="sessionsList">
+      <div class="empty-state"><p>Loading backed-up sessions…</p></div>
+    </div>
+
+    <hr class="divider" />
+
+    <div class="local-section">
+      <div class="section-title" style="font-size:15px; margin-bottom:4px;">Local Sessions</div>
+      <p class="section-desc" style="margin-bottom:14px;">Sessions currently stored on this server.</p>
+      <div id="localSessionsList">
+        <div class="empty-state"><p>Loading…</p></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const API = window.location.origin;
+
+    function showStatus(msg, type = "info") {
+      const el = document.getElementById("statusBanner");
+      el.textContent = msg;
+      el.className = `status-banner show ${type}`;
+    }
+    function hideStatus() {
+      document.getElementById("statusBanner").className = "status-banner";
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      try { return new Date(iso).toLocaleString(); } catch (_) { return iso; }
+    }
+
+    function chatIcon() {
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>`;
+    }
+
+    async function loadBackedUpSessions() {
+      const el = document.getElementById("sessionsList");
+      el.innerHTML = `<div class="empty-state"><p><span class="spinner"></span> Loading from cloud…</p></div>`;
+      hideStatus();
+
+      try {
+        const res = await fetch(`${API}/backup/sessions`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const sessions = await res.json();
+
+        if (!sessions.length) {
+          el.innerHTML = `<div class="empty-state"><p>No sessions found in cloud backup.</p></div>`;
+          return;
+        }
+
+        el.innerHTML = "";
+        for (const s of sessions) {
+          const card = document.createElement("div");
+          card.className = "session-card";
+          card.innerHTML = `
+            <div class="session-card-icon">${chatIcon()}</div>
+            <div class="session-card-info">
+              <div class="session-card-title">${escHtml(s.title || "Untitled")}</div>
+              <div class="session-card-meta">
+                <span>Updated: ${fmtDate(s.updated_at)}</span>
+                <span>${s.message_count || 0} messages</span>
+                <span class="badge ${s.local ? "badge-local" : "badge-cloud"}">
+                  ${s.local ? "Local ✓" : "Cloud only"}
+                </span>
+              </div>
+            </div>
+            <div class="session-card-actions">
+              ${s.local
+                ? `<button class="btn btn-ghost" onclick="backupSession('${s.session_id}', this)">Backup</button>`
+                : `<button class="btn btn-success" onclick="restoreSession('${s.session_id}', this)">Restore</button>`
+              }
+            </div>
+          `;
+          el.appendChild(card);
+        }
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state"><p style="color:#dc2626">Failed to load: ${escHtml(String(e))}</p></div>`;
+      }
+    }
+
+    async function loadLocalSessions() {
+      const el = document.getElementById("localSessionsList");
+      try {
+        const res = await fetch(`${API}/sessions`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const sessions = await res.json();
+
+        if (!sessions.length) {
+          el.innerHTML = `<div class="empty-state"><p>No local sessions found.</p></div>`;
+          return;
+        }
+
+        el.innerHTML = "";
+        for (const s of sessions) {
+          const card = document.createElement("div");
+          card.className = "session-card";
+          card.innerHTML = `
+            <div class="session-card-icon">${chatIcon()}</div>
+            <div class="session-card-info">
+              <div class="session-card-title">${escHtml(s.title || "Untitled")}</div>
+              <div class="session-card-meta">
+                <span>Updated: ${fmtDate(s.updated_at)}</span>
+                <span>${s.message_count || 0} messages</span>
+                <span class="badge badge-local">Local</span>
+              </div>
+            </div>
+            <div class="session-card-actions">
+              <button class="btn btn-ghost" onclick="backupSession('${s.session_id}', this)">Backup now</button>
+            </div>
+          `;
+          el.appendChild(card);
+        }
+      } catch (e) {
+        el.innerHTML = `<div class="empty-state"><p style="color:#dc2626">Failed to load: ${escHtml(String(e))}</p></div>`;
+      }
+    }
+
+    async function restoreSession(sessionId, btn) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span> Restoring…`;
+      hideStatus();
+      try {
+        const res = await fetch(`${API}/backup/sessions/${sessionId}/restore`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        showStatus(`Restored ${data.files_restored} files for session ${sessionId.slice(0, 8)}`, "success");
+        await loadBackedUpSessions();
+        await loadLocalSessions();
+      } catch (e) {
+        showStatus(`Restore failed: ${e.message}`, "error");
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    async function backupSession(sessionId, btn) {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span> Backing up…`;
+      hideStatus();
+      try {
+        const res = await fetch(`${API}/backup/sessions/${sessionId}`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        showStatus(`Backed up ${data.files_backed_up} files for session ${sessionId.slice(0, 8)}`, "success");
+        await loadBackedUpSessions();
+      } catch (e) {
+        showStatus(`Backup failed: ${e.message}`, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    }
+
+    async function restoreAll() {
+      const btn = document.getElementById("restoreAllBtn");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span> Restoring…`;
+      hideStatus();
+      try {
+        const res = await fetch(`${API}/backup/restore-all`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+        showStatus(
+          `Done — restored: ${data.restored}, already local: ${data.skipped}, total in cloud: ${data.total}`,
+          "success"
+        );
+        await loadBackedUpSessions();
+        await loadLocalSessions();
+      } catch (e) {
+        showStatus(`Restore all failed: ${e.message}`, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Restore all missing sessions";
+      }
+    }
+
+    async function backupCurrentSessions() {
+      const btn = document.getElementById("backupAllBtn");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span> Backing up…`;
+      hideStatus();
+      try {
+        const res = await fetch(`${API}/sessions`);
+        const sessions = await res.json();
+        let count = 0;
+        for (const s of sessions) {
+          const r = await fetch(`${API}/backup/sessions/${s.session_id}`, { method: "POST" });
+          if (r.ok) count++;
+        }
+        showStatus(`Backed up ${count} of ${sessions.length} sessions to cloud.`, "success");
+        await loadBackedUpSessions();
+      } catch (e) {
+        showStatus(`Backup failed: ${e.message}`, "error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Backup all local sessions";
+      }
+    }
+
+    function escHtml(str) {
+      return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    // Init
+    loadBackedUpSessions();
+    loadLocalSessions();
+  </script>
+</body>
+</html>

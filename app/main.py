@@ -1,11 +1,13 @@
-import datetime
+import logging
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
 from google import genai
 
 from app.config import get_settings
 from app.gcs_store import upload_text, upload_bytes
-from app.routes import sessions_router, sources_router, recap_router
+from app.routes import sessions_router, sources_router, recap_router, backup_router
 from app.live_notebook_agent.agent import AGENT_REGISTRY
 from app.ws_handlers import handle_live_websocket
 
@@ -13,13 +15,33 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # On cold start, restore any GCS-backed sessions not present locally.
+    # This ensures data survives container restarts (Cloud Run, etc.).
+    from app.gcs_backup import GCSBackupService
+    try:
+        result = await GCSBackupService().restore_all(overwrite=False)
+        logger.info(
+            "GCS startup restore — restored: %d, skipped: %d, total: %d",
+            result["restored"], result["skipped"], result["total"],
+        )
+    except Exception as exc:
+        logger.warning("GCS startup restore skipped (non-fatal): %s", exc)
+    yield  # app runs here
+
 
 app = FastAPI(
     title="LiveNotebookLM",
     version="0.1.0",
     description="NotebookLM with real-time voice interaction via Gemini Live API",
+    lifespan=lifespan,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -30,6 +52,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(sessions_router)
 app.include_router(sources_router)
 app.include_router(recap_router)
+app.include_router(backup_router)
 
 
 @app.get("/")
@@ -52,7 +75,7 @@ async def health():
 @app.post("/debug/upload-smoke")
 async def upload_smoke():
     settings = get_settings()
-    ts = datetime.datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     path = f"debug/smoke-{ts}.txt"
 
     uri = upload_text(
@@ -122,7 +145,7 @@ async def live_smoke():
                 "message": "No audio bytes received from Live API",
             }
 
-        ts = datetime.datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         path = f"debug/live-smoke-{ts}.bin"
         uri = upload_bytes(path, audio_bytes, "application/octet-stream")
 
@@ -153,6 +176,12 @@ async def ws_ping(websocket: WebSocket):
     await websocket.send_json({"type": "pong"})
     await websocket.close()
 
+
 @app.get("/ui")
 async def ui():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/restore")
+async def restore_page():
+    return FileResponse(STATIC_DIR / "restore.html")
