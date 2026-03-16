@@ -45,6 +45,11 @@ class LiveRuntime:
             "response_modalities": ["AUDIO"],
             "input_audio_transcription": {},
             "output_audio_transcription": {},
+            # Explicitly enable server-side VAD so the model interrupts itself
+            # when user speech is detected mid-response.
+            "realtime_input_config": {
+                "automatic_activity_detection": {},
+            },
         }
         if system_instruction:
             config["system_instruction"] = system_instruction

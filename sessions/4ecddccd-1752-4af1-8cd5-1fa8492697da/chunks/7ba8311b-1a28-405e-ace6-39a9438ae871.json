@@ -1,0 +1,74 @@
+[
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_0",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "Assignment 2 Report\n122020101\n1(a) Sales Distribution by Store, Product Family, and Store Type\nWe first explored how sales vary across stores, product families, and store types to understand the basic structure of the dataset.\nThe plots show clear differences between stores. Some stores consistently generate higher average sales while others remain relatively low. This suggests that store location, size, or local demand likely influence sales performance.\nSales also vary significantly across product families. Categories related to daily consumption, such as grocery products, show much higher sales compared to more specialized product types. This is expected because these products are purchased more frequently.\nWhen comparing store types, similar differences appear. Some store formats maintain higher sales levels, while smaller formats show lower averages. Overall, the analysis suggests that both product categories and store characteristics play an important role in determining sales patterns.\n1(b) Sales and Transaction Trends Across Time Frequencies\nSales and transaction data were visualized at different time frequencies including daily, weekly, monthly, quarterly, and yearly level",
+    "page": null,
+    "section": "docx"
+  },
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_1",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "ime Frequencies\nSales and transaction data were visualized at different time frequencies including daily, weekly, monthly, quarterly, and yearly levels.\nAt the daily level, the series is highly volatile with frequent spikes and drops. These short-term fluctuations are likely influenced by promotions, holidays, and daily shopping behavior.\nWhen aggregated to the weekly level, the series becomes smoother and repeating patterns start to appear. This suggests possible weekly purchasing cycles.\nAt monthly and quarterly levels, broader movements in sales become more visible. These longer patterns may reflect seasonal demand or changes in retail activity over time.\nAcross all time scales, sales and transactions move closely together, indicating a strong relationship between customer traffic and sales volume.\n1(c) Rolling Mean Trend Analysis\nTo better observe the long-term trend, a 365-day rolling mean was applied to the sales data.\nThe original daily series shows strong fluctuations. After smoothing with the rolling mean, the overall trend becomes easier to observe. The results show that sales levels change gradually over time rather than remaining constant.\nThis confirms that the time se",
+    "page": null,
+    "section": "docx"
+  },
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_2",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "ecomes easier to observe. The results show that sales levels change gradually over time rather than remaining constant.\nThis confirms that the time series contains a trend component and is not stationary. It also reinforces the observation that sales and transactions move in similar directions over time.\n1(d) Seasonal Decomposition\nSeasonal decomposition was applied to separate the sales series into trend, seasonal, and residual components.\nThe trend component shows gradual changes in the overall sales level over time. The seasonal component reveals repeating patterns in the data, suggesting that customer purchasing behavior follows regular cycles. The residual component captures irregular variations that cannot be explained by trend or seasonality.\nTogether, these components indicate that the sales series contains both long-term trends and seasonal patterns.\n1(e) Relationship Between Sales and Transactions\nTo examine the relationship between sales and transactions, daily totals of both variables were compared.\nThe scatter plot shows a clear positive relationship. Days with more transactions generally correspond to higher total sales. This is intuitive in a retail context because m",
+    "page": null,
+    "section": "docx"
+  },
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_3",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "a clear positive relationship. Days with more transactions generally correspond to higher total sales. This is intuitive in a retail context because more transactions usually indicate more customers making purchases.\nHowever, the relationship is not perfectly linear, which suggests that the average spending per transaction also varies across days.\n1(f) Autocorrelation of Sales\nThe autocorrelation function (ACF) was used to examine how current sales relate to past values.\nThe ACF plot shows significant correlations at several lags, meaning that past sales values contain useful information for predicting future sales. The gradual decay pattern suggests persistent temporal dependence in the data.\nThis result indicates that autoregressive time-series models such as ARIMA may be appropriate for forecasting.\n1(g) Summary Statistics of Sales\nThe mean and standard deviation of sales were calculated to summarize the overall distribution.\nThe average daily sales is approximately 359.02, while the standard deviation is about 1107.29. The large standard deviation relative to the mean indicates substantial variability in the dataset.\nThis variability is expected in retail sales data because sal",
+    "page": null,
+    "section": "docx"
+  },
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_4",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "tandard deviation relative to the mean indicates substantial variability in the dataset.\nThis variability is expected in retail sales data because sales depend on many factors, including promotions, store characteristics, and seasonal demand.\n2(a) Augmented Dickey-Fuller Test\nThe Augmented Dickey-Fuller (ADF) test was used to determine whether the sales time series is stationary.\nThe test result shows that the p-value of the original series is greater than 0.05, indicating that the null hypothesis of a unit root cannot be rejected. This suggests that the original series is non-stationary.\nAfter applying first-order differencing, the series becomes stationary, meaning that a differencing order of d = 1 is appropriate for ARIMA modeling.\n2(b) Selection of ARIMA Parameters\nTo determine the ARIMA parameters, the ACF and PACF plots of the differenced series were examined.\nThe PACF plot shows a significant spike at lag 1, suggesting an autoregressive order of p = 1. The ACF plot also shows a noticeable spike at lag 1, indicating a moving average order of q = 1.\nBased on these observations, ARIMA(1,1,1) was selected as a reasonable model for forecasting sales.\n2(c) ARIMA Forecasting\nThe A",
+    "page": null,
+    "section": "docx"
+  },
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_5",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "erage order of q = 1.\nBased on these observations, ARIMA(1,1,1) was selected as a reasonable model for forecasting sales.\n2(c) ARIMA Forecasting\nThe ARIMA(1,1,1) model was fitted to the daily sales series.\nThe data was split chronologically, with the last 15 observations used as the test set and the remaining data used for training. After fitting the model, forecasts were generated for the test period.\nThe predicted values follow the general movement of the actual sales, although they do not perfectly capture short-term fluctuations. This limitation is expected because ARIMA is a linear model and may struggle to capture more complex nonlinear patterns.\nNevertheless, the ARIMA model provides a useful statistical baseline for comparing more advanced forecasting methods.\n3(a) Machine Learning Models\nSeveral machine learning models were tested for sales forecasting, including Lasso, Ridge, Regression Tree, Random Forest, and XGBoost.\nFeature engineering was performed to include store information, product family, promotion indicators, transaction counts, oil prices, holiday variables, and time-based features such as month and weekday.\nThe dataset was split using a time-based approach. O",
+    "page": null,
+    "section": "docx"
+  },
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_6",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "saction counts, oil prices, holiday variables, and time-based features such as month and weekday.\nThe dataset was split using a time-based approach. Observations before August 1, 2017 were used for training, while later observations were used for testing.\nAmong the tested models, tree-based models such as Random Forest and XGBoost generally perform better than linear models because they can capture nonlinear relationships between features.\n3(b) LSTM and GRU Models\nDeep learning approaches were also explored using LSTM and GRU models.\nThe sales data was normalized using MinMax scaling and transformed into sliding-window sequences. In this setup, the previous 16 days of sales were used to predict future values.\nBoth models were trained on the historical data and evaluated on the test set. The results show that these recurrent neural networks are able to capture temporal patterns in the sales series and follow the overall trend reasonably well.\n3(c) Transformer Model\nA Transformer-based model was also implemented for sales forecasting.\nUnlike recurrent neural networks, the Transformer uses self-attention to capture relationships between different time steps. This allows the model to p",
+    "page": null,
+    "section": "docx"
+  },
+  {
+    "chunk_id": "7ba8311b-1a28-405e-ace6-39a9438ae871_chunk_7",
+    "session_id": "4ecddccd-1752-4af1-8cd5-1fa8492697da",
+    "source_id": "7ba8311b-1a28-405e-ace6-39a9438ae871",
+    "source_name": "Report.docx",
+    "text": "nlike recurrent neural networks, the Transformer uses self-attention to capture relationships between different time steps. This allows the model to process sequential information in parallel and potentially learn long-range dependencies.\nThe model was trained using the same sliding-window structure as the recurrent models. The prediction results show that the Transformer can also capture the general movement of sales over time.\n3(e) Comparison of Forecasted and Actual Sales\nFinally, predicted sales values were compared with the actual sales in the test period.\nThe comparison plot shows that the selected forecasting model is able to follow the general trend of the sales series. Although some short-term fluctuations are not perfectly predicted, the forecasts remain close to the actual values overall.\nThese differences are likely caused by sudden changes in demand, promotions, or other external factors that are difficult to capture in the model.\nOverall, the forecasting results demonstrate that the models can learn meaningful temporal patterns from historical sales data and provide reasonable predictions for future sales.",
+    "page": null,
+    "section": "docx"
+  }
+]

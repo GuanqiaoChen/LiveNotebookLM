@@ -135,7 +135,9 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
         # Initialise orchestrator here (not at WS accept time) to avoid
         # blocking the handshake with Pinecone network calls.
         if orchestrator is None:
-            orchestrator = LiveOrchestrator()
+            # Run in a thread pool to avoid blocking the event loop with
+            # Pinecone's synchronous gRPC initialisation (cold-start can be >10 s).
+            orchestrator = await asyncio.to_thread(LiveOrchestrator)
 
         runtime_closed_event = asyncio.Event()
         turn_state["user_transcript"] = ""
@@ -146,7 +148,7 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
         system_instruction = _build_system_instruction(session_id, orchestrator)
         runtime = LiveRuntime()
         await asyncio.wait_for(
-            runtime.connect(system_instruction=system_instruction), timeout=30
+            runtime.connect(system_instruction=system_instruction), timeout=60
         )
         runtime_ready = True
 

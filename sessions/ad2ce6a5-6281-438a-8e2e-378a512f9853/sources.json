@@ -1,0 +1,15 @@
+[
+  {
+    "source_id": "a9f23f58-1b76-4ec8-bed9-3d2e6603c7b9",
+    "session_id": "ad2ce6a5-6281-438a-8e2e-378a512f9853",
+    "kind": "uploaded_file",
+    "display_name": "README.md",
+    "original_filename": "README.md",
+    "mime_type": "application/octet-stream",
+    "gcs_uri": "gs://lucky-era-489621-d0-livenotebooklm-dev/sessions/ad2ce6a5-6281-438a-8e2e-378a512f9853/sources/20260312-083830-README.md",
+    "source_url": null,
+    "uploaded_at": "2026-03-12T08:38:48.659970Z",
+    "processing_status": "indexed",
+    "chunk_count": 5
+  }
+]

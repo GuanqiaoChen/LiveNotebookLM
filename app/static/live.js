@@ -1,26 +1,20 @@
 /**
- * LiveNotebookLM – production-grade frontend for the Gemini Live voice agent.
+ * LiveNotebookLM – production frontend
  *
  * Audio pipeline:
- *   Mic  →  AudioWorkletNode (audio thread)  →  postMessage  →  main thread
- *        →  downsample to 16 kHz  →  PCM-16  →  base64  →  WebSocket
- *
- * Using AudioWorklet keeps the audio capture entirely off the main JS thread,
- * so UI operations (fetch, DOM updates, web search) are never blocked.
+ *   Mic → AudioWorkletNode (audio thread) → postMessage →
+ *   main thread: downsample → PCM-16 → base64 → WebSocket → Gemini Live
  *
  * Playback:
- *   WebSocket  →  base64 decode  →  PCM-16  →  Float32  →  AudioBufferSource
- *
- * VAD interrupt is handled automatically by Gemini Live server-side.
+ *   WebSocket → base64 → PCM-16 → Float32 → AudioBufferSource
  */
 
 const API_BASE = window.location.origin;
 const WS_BASE  = window.location.origin.replace(/^http/, "ws");
-
 const ASSISTANT_PCM_RATE = 24000;
 const USER_PCM_RATE      = 16000;
 
-// ── State ──────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 
 const state = {
   ws: null,
@@ -29,74 +23,72 @@ const state = {
   conversationActive: false,
   startupFailed: false,
   sessionSourceCount: 0,
+  recapData: null,
 
   // Web Audio
   audioContext: null,
   playbackTime: 0,
   activeAudioNodes: [],
 
-  // Microphone pipeline (AudioWorklet primary, ScriptProcessor fallback)
+  // Microphone (AudioWorklet primary, ScriptProcessor fallback)
   mediaStream: null,
   mediaSourceNode: null,
-  workletNode: null,       // AudioWorkletNode (preferred)
-  processorNode: null,     // ScriptProcessorNode (fallback)
+  workletNode: null,
+  processorNode: null,
 
   // Live transcript bubbles
   liveUserBubble: null,
   liveAssistantBubble: null,
-
   currentUserText: "",
   currentAssistantText: "",
 };
 
-// ── Web search state ────────────────────────────────────────────────────────
+// Web search results: [{ title, url, snippet, checked }]
+const webState = { results: [], searching: false };
 
-const webState = {
-  results: [],    // [{ title, url, snippet, checked }]
-  searching: false,
-};
-
-// ── DOM refs ────────────────────────────────────────────────────────────────
+// ── DOM refs ─────────────────────────────────────────────────────────────────
 
 const els = {
-  sessionTitle:    document.getElementById("sessionTitle"),
-  sessionId:       document.getElementById("sessionId"),
-  createBtn:       document.getElementById("createSessionBtn"),
-  beginBtn:        document.getElementById("beginConvBtn"),
-  endBtn:          document.getElementById("endConvBtn"),
-  statusBox:       document.getElementById("statusBox"),
-  micIndicator:    document.getElementById("micIndicator"),
-  messages:        document.getElementById("messages"),
-  sourceCues:      document.getElementById("sourceCues"),
-  // Sources panel
-  sourceList:      document.getElementById("sourceList"),
-  sourceCount:     document.getElementById("sourceCount"),
-  sourceListError: document.getElementById("sourceListError"),
-  fileInput:       document.getElementById("fileUploadInput"),
-  uploadLabel:     document.getElementById("uploadLabel"),
+  // Session
+  newChatBtn:       document.getElementById("newChatBtn"),
+  sessionListWrap:  document.getElementById("sessionListWrap"),
+  // Conversation
+  beginBtn:         document.getElementById("beginConvBtn"),
+  endBtn:           document.getElementById("endConvBtn"),
+  statusBox:        document.getElementById("statusBox"),
+  micIndicator:     document.getElementById("micIndicator"),
+  messages:         document.getElementById("messages"),
+  // Citations
+  sourceCues:       document.getElementById("sourceCues"),
+  // Sources
+  sourceList:       document.getElementById("sourceList"),
+  sourceCount:      document.getElementById("sourceCount"),
+  sourceListError:  document.getElementById("sourceListError"),
+  fileInput:        document.getElementById("fileUploadInput"),
+  uploadLabel:      document.getElementById("uploadLabel"),
   // Web search
-  webSearchInput:  document.getElementById("webSearchInput"),
-  webSearchBtn:    document.getElementById("webSearchBtn"),
-  webResultsList:  document.getElementById("webResultsList"),
-  addWebBtn:       document.getElementById("addWebBtn"),
-  webSearchError:  document.getElementById("webSearchError"),
+  webSearchInput:   document.getElementById("webSearchInput"),
+  webSearchBtn:     document.getElementById("webSearchBtn"),
+  webResultsList:   document.getElementById("webResultsList"),
+  addWebBtn:        document.getElementById("addWebBtn"),
+  webSearchError:   document.getElementById("webSearchError"),
+  // Recap
+  generateRecapBtn: document.getElementById("generateRecapBtn"),
+  downloadRecapBtn: document.getElementById("downloadRecapBtn"),
+  recapPreview:     document.getElementById("recapPreview"),
 };
 
 // ── UI helpers ───────────────────────────────────────────────────────────────
 
-function setStatus(text) {
-  els.statusBox.textContent = text;
-}
+function setStatus(text) { els.statusBox.textContent = text; }
 
 function setMicActive(on) {
-  if (!els.micIndicator) return;
   els.micIndicator.className = "mic-dot " + (on ? "mic-on" : "mic-off");
-  els.micIndicator.title = on ? "Mic active" : "Mic off";
 }
 
 function updateButtons() {
   const active = state.conversationActive;
-  els.beginBtn.disabled = active;
+  els.beginBtn.disabled = active || !state.sessionId;
   els.endBtn.disabled   = !active;
 }
 
@@ -110,10 +102,10 @@ function showWebError(msg) {
   els.webSearchError.style.display = msg ? "" : "none";
 }
 
-function createLiveBubble(role, placeholder) {
+function createLiveBubble(role) {
   const div = document.createElement("div");
   div.className = `msg ${role} bubble-live`;
-  div.textContent = placeholder || "…";
+  div.textContent = "…";
   els.messages.appendChild(div);
   scrollMessages();
   return div;
@@ -141,49 +133,138 @@ function scrollMessages() {
   els.messages.scrollTop = els.messages.scrollHeight;
 }
 
-function renderSourceCues(evidence) {
-  els.sourceCues.innerHTML = "";
-  if (!evidence || !evidence.length) {
-    const empty = document.createElement("div");
-    empty.className = "muted";
-    empty.textContent = "No source cues for this turn";
-    els.sourceCues.appendChild(empty);
+// ── Session list (ChatGPT-style) ─────────────────────────────────────────────
+
+async function loadSessionList() {
+  try {
+    const res = await fetch(`${API_BASE}/sessions`);
+    if (!res.ok) return;
+    const sessions = await res.json();
+    renderSessionList(sessions);
+  } catch (_) {}
+}
+
+function renderSessionList(sessions) {
+  const wrap = els.sessionListWrap;
+  wrap.innerHTML = "";
+
+  if (!sessions || !sessions.length) {
+    wrap.innerHTML = '<div class="session-list-empty">No sessions yet.<br>Click "New Conversation" to start.</div>';
     return;
   }
-  for (const item of evidence) {
-    const div = document.createElement("div");
-    div.className = "source-cue-item";
 
-    const head = document.createElement("div");
-    head.className = "source-head";
-    head.textContent = item.source_name || "unknown source";
-    div.appendChild(head);
+  // Sort newest first
+  sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
-    const meta = document.createElement("div");
-    meta.className = "source-meta";
-    meta.textContent = [
-      item.page    != null ? `p. ${item.page}` : null,
-      item.section          ? `§ ${item.section}` : null,
-      item.score   != null  ? `score ${Number(item.score).toFixed(2)}` : null,
-    ].filter(Boolean).join(" · ");
-    div.appendChild(meta);
+  const now   = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today - 86400000);
+  const lastWeek  = new Date(today - 6 * 86400000);
 
-    const snippet = document.createElement("div");
-    snippet.className = "source-snippet";
-    snippet.textContent = item.text || "";
-    div.appendChild(snippet);
-
-    els.sourceCues.appendChild(div);
+  const groups = { Today: [], Yesterday: [], "Last 7 days": [], Earlier: [] };
+  for (const s of sessions) {
+    const d = new Date(s.updated_at);
+    const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    if (day >= today)         groups["Today"].push(s);
+    else if (day >= yesterday) groups["Yesterday"].push(s);
+    else if (day >= lastWeek)  groups["Last 7 days"].push(s);
+    else                       groups["Earlier"].push(s);
   }
+
+  for (const [label, items] of Object.entries(groups)) {
+    if (!items.length) continue;
+
+    const grp = document.createElement("div");
+    grp.className = "session-group-label";
+    grp.textContent = label;
+    wrap.appendChild(grp);
+
+    for (const s of items) {
+      const item = document.createElement("div");
+      item.className = "session-item" + (s.session_id === state.sessionId ? " active" : "");
+      item.dataset.sessionId = s.session_id;
+
+      const icon = document.createElement("span");
+      icon.className = "session-item-icon";
+      icon.textContent = "💬";
+
+      const title = document.createElement("span");
+      title.className = "session-item-title";
+      title.textContent = s.title || "Untitled session";
+
+      const cnt = document.createElement("span");
+      cnt.className = "session-count";
+      if (s.message_count) cnt.textContent = s.message_count;
+
+      item.appendChild(icon);
+      item.appendChild(title);
+      item.appendChild(cnt);
+      item.addEventListener("click", () => selectSession(s.session_id, s.title));
+      wrap.appendChild(item);
+    }
+  }
+}
+
+async function selectSession(sessionId, title) {
+  if (state.conversationActive) {
+    if (!confirm("End the current conversation and switch sessions?")) return;
+    await endConversation();
+  }
+
+  state.sessionId = sessionId;
+
+  // Highlight active session
+  document.querySelectorAll(".session-item").forEach(el => {
+    el.classList.toggle("active", el.dataset.sessionId === sessionId);
+  });
+
+  // Reset conversation area
+  els.messages.innerHTML = "";
+  setStatus(`Session: ${title || sessionId.slice(0, 8)}`);
+  updateButtons();
+
+  // Load session data in parallel
+  await Promise.all([loadSources(), tryLoadExistingRecap()]);
+  await loadSessionMessages(sessionId);
+}
+
+async function loadSessionMessages(sessionId) {
+  try {
+    const res = await fetch(`${API_BASE}/sessions/${sessionId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const messages = data.messages || [];
+    if (!messages.length) return;
+
+    for (const msg of messages) {
+      if (!msg.content || !msg.content.trim()) continue;
+      if (msg.role === "system") { addSystemMessage(msg.content); continue; }
+      const div = document.createElement("div");
+      div.className = `msg ${msg.role === "user" ? "user" : "assistant"}`;
+      div.textContent = msg.content;
+      els.messages.appendChild(div);
+    }
+    scrollMessages();
+  } catch (_) {}
+}
+
+async function createSession(title) {
+  const res = await fetch(`${API_BASE}/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: title || "New conversation" }),
+  });
+  if (!res.ok) throw new Error(`Failed to create session: ${res.status}`);
+  const data = await res.json();
+  return data;
 }
 
 // ── Source management ────────────────────────────────────────────────────────
 
 async function loadSources() {
-  const sessionId = state.sessionId || els.sessionId.value.trim();
-  if (!sessionId) return;
+  if (!state.sessionId) return;
   try {
-    const res = await fetch(`${API_BASE}/sessions/${sessionId}/sources`);
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources`);
     if (!res.ok) return;
     const sources = await res.json();
     state.sessionSourceCount = sources.length;
@@ -197,10 +278,7 @@ function renderSources(sources) {
   showSourceError("");
 
   if (!sources.length) {
-    const empty = document.createElement("div");
-    empty.className = "muted";
-    empty.textContent = "No sources yet.";
-    els.sourceList.appendChild(empty);
+    els.sourceList.innerHTML = '<p class="muted-text">No sources yet.</p>';
     return;
   }
 
@@ -211,102 +289,68 @@ function renderSources(sources) {
     const icon = document.createElement("span");
     icon.className = "source-list-icon";
     icon.textContent = src.kind === "web_result" ? "🌐" : "📄";
-    row.appendChild(icon);
 
     const name = document.createElement("span");
     name.className = "source-list-name";
     name.title = src.display_name;
     name.textContent = src.display_name;
-    row.appendChild(name);
 
     const status = document.createElement("span");
     status.className = "source-list-status";
-    if (src.processing_status === "failed") {
-      status.textContent = "✗";
-      status.style.color = "#ef4444";
-    } else if (src.processing_status === "indexed") {
+    if (src.processing_status === "indexed") {
       status.textContent = "✓";
-      status.style.color = "#22c55e";
+      status.style.color = "#16a34a";
+    } else if (src.processing_status === "failed") {
+      status.textContent = "✗";
+      status.style.color = "#dc2626";
     } else {
       status.textContent = "…";
+      status.style.color = "#9ca3af";
     }
-    row.appendChild(status);
 
-    const delBtn = document.createElement("button");
-    delBtn.className = "source-del-btn";
-    delBtn.title = "Delete source";
-    delBtn.textContent = "✕";
-    delBtn.addEventListener("click", () => deleteSource(src.source_id));
-    row.appendChild(delBtn);
+    const del = document.createElement("button");
+    del.className = "source-del-btn";
+    del.title = "Delete";
+    del.textContent = "✕";
+    del.addEventListener("click", () => deleteSource(src.source_id));
 
+    row.append(icon, name, status, del);
     els.sourceList.appendChild(row);
   }
 }
 
 async function deleteSource(sourceId) {
-  const sessionId = state.sessionId || els.sessionId.value.trim();
-  if (!sessionId) return;
+  if (!state.sessionId) return;
   try {
-    const res = await fetch(
-      `${API_BASE}/sessions/${sessionId}/sources/${sourceId}`,
-      { method: "DELETE" }
-    );
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showSourceError(err.detail || `Delete failed (${res.status})`);
-      return;
-    }
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/${sourceId}`, { method: "DELETE" });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showSourceError(e.detail || "Delete failed"); return; }
     await loadSources();
-  } catch (err) {
-    showSourceError(String(err));
-  }
+  } catch (e) { showSourceError(String(e)); }
 }
 
 async function uploadFile(file) {
-  const sessionId = state.sessionId || els.sessionId.value.trim();
-  if (!sessionId) {
-    showSourceError("Create or enter a session ID first.");
-    return;
-  }
-  if (state.sessionSourceCount >= 10) {
-    showSourceError("Source limit reached (max 10 per session).");
-    return;
-  }
+  if (!state.sessionId) { showSourceError("Select or create a session first."); return; }
+  if (state.sessionSourceCount >= 10) { showSourceError("Source limit reached (max 10)."); return; }
 
   showSourceError("");
-  // Update label text without touching the hidden <input>
   const textNode = els.uploadLabel.firstChild;
-  const origText = textNode.textContent;
+  const orig = textNode.textContent;
   textNode.textContent = " Uploading…";
-  els.uploadLabel.style.opacity = "0.6";
+  els.uploadLabel.style.opacity = "0.5";
 
   try {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(
-      `${API_BASE}/sessions/${sessionId}/sources/upload`,
-      { method: "POST", body: form }
-    );
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showSourceError(err.detail || `Upload failed (${res.status})`);
-      return;
-    }
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/upload`, { method: "POST", body: form });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showSourceError(e.detail || "Upload failed"); return; }
     await loadSources();
-  } catch (err) {
-    showSourceError(String(err));
-  } finally {
-    textNode.textContent = origText;
-    els.uploadLabel.style.opacity = "";
-    els.fileInput.value = "";
-  }
+  } catch (e) { showSourceError(String(e)); }
+  finally { textNode.textContent = orig; els.uploadLabel.style.opacity = ""; els.fileInput.value = ""; }
 }
 
 // ── Web search ───────────────────────────────────────────────────────────────
 
-function checkedResults() {
-  return webState.results.filter(r => r.checked);
-}
+function checkedResults() { return webState.results.filter(r => r.checked); }
 
 function updateAddWebButton() {
   const n = checkedResults().length;
@@ -316,8 +360,6 @@ function updateAddWebButton() {
 
 function renderWebResults() {
   els.webResultsList.innerHTML = "";
-  if (!webState.results.length) return;
-
   webState.results.forEach((r, i) => {
     const item = document.createElement("div");
     item.className = "web-result-item" + (r.checked ? " checked" : "");
@@ -330,61 +372,58 @@ function renderWebResults() {
     cb.checked = r.checked;
     cb.addEventListener("change", () => toggleWebResult(i, cb.checked));
 
-    const textDiv = document.createElement("div");
-    textDiv.className = "web-result-text";
+    const txt = document.createElement("div");
+    txt.className = "web-result-text";
 
     const title = document.createElement("div");
     title.className = "web-result-title";
     title.textContent = r.title || r.url;
 
-    const snippet = document.createElement("div");
-    snippet.className = "web-result-snippet";
-    snippet.textContent = r.snippet;
+    const snip = document.createElement("div");
+    snip.className = "web-result-snippet";
+    snip.textContent = r.snippet;
 
-    textDiv.appendChild(title);
-    textDiv.appendChild(snippet);
-    label.appendChild(cb);
-    label.appendChild(textDiv);
+    txt.append(title, snip);
+    label.append(cb, txt);
     item.appendChild(label);
     els.webResultsList.appendChild(item);
   });
-
   updateAddWebButton();
 }
 
 function toggleWebResult(index, checked) {
   if (index < 0 || index >= webState.results.length) return;
 
-  const totalAfter = (checkedResults().length - (webState.results[index].checked ? 1 : 0))
-                     + (checked ? 1 : 0)
-                     + state.sessionSourceCount;
-
-  if (checked && totalAfter > 10) {
+  // Unchecking always allowed
+  if (!checked) {
+    webState.results[index].checked = false;
     const items = els.webResultsList.querySelectorAll(".web-result-item");
-    if (items[index]) {
-      items[index].querySelector("input[type=checkbox]").checked = false;
-    }
-    showWebError(
-      `Cannot select more: session has ${state.sessionSourceCount} source(s) ` +
-      `and ${checkedResults().length} checked (max 10 total).`
-    );
+    if (items[index]) items[index].classList.remove("checked");
+    showWebError("");
+    updateAddWebButton();
     return;
   }
 
-  webState.results[index].checked = checked;
+  // Checking: validate cap
+  const currentChecked = webState.results.filter(r => r.checked).length;
+  if (currentChecked + state.sessionSourceCount >= 10) {
+    const items = els.webResultsList.querySelectorAll(".web-result-item");
+    if (items[index]) items[index].querySelector("input[type=checkbox]").checked = false;
+    showWebError(`Cannot select more: ${state.sessionSourceCount} in session + ${currentChecked} checked = 10 max.`);
+    return;
+  }
+
+  webState.results[index].checked = true;
   const items = els.webResultsList.querySelectorAll(".web-result-item");
-  if (items[index]) items[index].classList.toggle("checked", checked);
+  if (items[index]) items[index].classList.add("checked");
   showWebError("");
   updateAddWebButton();
 }
 
 async function performWebSearch() {
-  const sessionId = state.sessionId || els.sessionId.value.trim();
-  if (!sessionId) { showWebError("Create or enter a session ID first."); return; }
-
+  if (!state.sessionId) { showWebError("Select or create a session first."); return; }
   const query = els.webSearchInput.value.trim();
-  if (!query) return;
-  if (webState.searching) return;
+  if (!query || webState.searching) return;
 
   webState.searching = true;
   showWebError("");
@@ -393,53 +432,34 @@ async function performWebSearch() {
 
   try {
     const kept = checkedResults();
-    const pendingCount = kept.length;
-
-    if (state.sessionSourceCount + pendingCount >= 10) {
-      showWebError(
-        `No capacity: session has ${state.sessionSourceCount} source(s) ` +
-        `and ${pendingCount} are checked to add.`
-      );
+    if (state.sessionSourceCount + kept.length >= 10) {
+      showWebError(`No capacity for new results.`);
       return;
     }
 
-    const res = await fetch(`${API_BASE}/sessions/${sessionId}/sources/web-search`, {
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/web-search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, pending_count: pendingCount }),
+      body: JSON.stringify({ query, pending_count: kept.length }),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showWebError(err.detail || `Search failed (${res.status})`);
-      return;
-    }
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showWebError(e.detail || "Search failed"); return; }
 
     const data = await res.json();
-    const newResults = (data.results || []).map(r => ({ ...r, checked: false }));
-    webState.results = [...kept, ...newResults];
+    webState.results = [...kept, ...(data.results || []).map(r => ({ ...r, checked: false }))];
     renderWebResults();
 
-  } catch (err) {
-    showWebError(String(err));
-  } finally {
-    webState.searching = false;
-    els.webSearchBtn.disabled = false;
-    els.webSearchBtn.textContent = "🔍";
-  }
+  } catch (e) { showWebError(String(e)); }
+  finally { webState.searching = false; els.webSearchBtn.disabled = false; els.webSearchBtn.textContent = "🔍"; }
 }
 
 async function addSelectedWebSources() {
-  const sessionId = state.sessionId || els.sessionId.value.trim();
-  if (!sessionId) return;
-
+  if (!state.sessionId) return;
   const selected = checkedResults();
   if (!selected.length) return;
 
   if (state.sessionSourceCount + selected.length > 10) {
-    showWebError(
-      `Cannot add ${selected.length}: only ${10 - state.sessionSourceCount} slot(s) remaining.`
-    );
+    showWebError(`Cannot add ${selected.length}: only ${10 - state.sessionSourceCount} slot(s) remaining.`);
     return;
   }
 
@@ -447,60 +467,194 @@ async function addSelectedWebSources() {
   showWebError("");
 
   try {
-    const res = await fetch(`${API_BASE}/sessions/${sessionId}/sources/add-web`, {
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/add-web`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        results: selected.map(({ title, url, snippet }) => ({ title, url, snippet })),
-      }),
+      body: JSON.stringify({ results: selected.map(({ title, url, snippet }) => ({ title, url, snippet })) }),
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      showWebError(err.detail || `Add failed (${res.status})`);
-      els.addWebBtn.disabled = false;
-      return;
-    }
+    if (!res.ok) { const e = await res.json().catch(() => ({})); showWebError(e.detail || "Add failed"); els.addWebBtn.disabled = false; return; }
 
     webState.results = webState.results.filter(r => !r.checked);
     renderWebResults();
     await loadSources();
+  } catch (e) { showWebError(String(e)); els.addWebBtn.disabled = false; }
+}
 
-  } catch (err) {
-    showWebError(String(err));
-    els.addWebBtn.disabled = false;
+// ── Citations (source cues) ──────────────────────────────────────────────────
+
+function renderCitations(evidence) {
+  els.sourceCues.innerHTML = "";
+  if (!evidence || !evidence.length) {
+    els.sourceCues.innerHTML = '<p class="muted-text">Evidence appears after each turn.</p>';
+    return;
+  }
+  for (const item of evidence) {
+    const div = document.createElement("div");
+    div.className = "citation-item";
+
+    const name = document.createElement("div");
+    name.className = "citation-name";
+    name.textContent = item.source_name || "Unknown source";
+
+    const meta = document.createElement("div");
+    meta.className = "citation-meta";
+    meta.textContent = [
+      item.page    != null ? `p. ${item.page}`    : null,
+      item.section          ? `§ ${item.section}` : null,
+    ].filter(Boolean).join(" · ");
+
+    const snip = document.createElement("div");
+    snip.className = "citation-snippet";
+    snip.textContent = item.text || "";
+
+    div.append(name, meta, snip);
+    els.sourceCues.appendChild(div);
   }
 }
 
-// ── Audio encoding helpers ────────────────────────────────────────────────────
+// ── Recap ────────────────────────────────────────────────────────────────────
 
-/**
- * Convert Uint8Array → base64 without using spread (spread causes stack
- * overflows on large arrays and is ~10× slower).
- */
-function uint8ArrayToBase64(bytes) {
-  const CHUNK = 0x8000;  // 32 KB chunks
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += CHUNK) {
-    binary += String.fromCharCode.apply(
-      null, bytes.subarray(offset, Math.min(offset + CHUNK, bytes.length))
-    );
+function renderRecapPreview(recap) {
+  els.recapPreview.innerHTML = "";
+  if (!recap) {
+    els.recapPreview.innerHTML = '<span class="recap-placeholder">Generate a note to recap this session.</span>';
+    els.downloadRecapBtn.disabled = true;
+    return;
   }
+
+  if (recap.topic) {
+    const t = document.createElement("div");
+    t.className = "recap-topic";
+    t.textContent = recap.topic;
+    els.recapPreview.appendChild(t);
+  }
+
+  for (const [label, items] of [
+    ["Key Insights", recap.key_insights],
+    ["Sources Referenced", recap.sources_referenced],
+    ["Open Questions", recap.open_questions],
+    ["Next Steps", recap.next_steps],
+  ]) {
+    if (!items || !items.length) continue;
+    const lbl = document.createElement("div");
+    lbl.className = "recap-label";
+    lbl.textContent = label;
+    const ul = document.createElement("ul");
+    ul.className = "recap-list";
+    for (const item of items) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ul.appendChild(li);
+    }
+    els.recapPreview.append(lbl, ul);
+  }
+
+  els.downloadRecapBtn.disabled = false;
+}
+
+async function generateRecap() {
+  if (!state.sessionId) return;
+  els.generateRecapBtn.disabled = true;
+  els.generateRecapBtn.textContent = "…";
+  els.recapPreview.innerHTML = '<span class="recap-placeholder">Generating…</span>';
+
+  try {
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/recap/generate`, { method: "POST" });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); els.recapPreview.innerHTML = `<span class="recap-placeholder" style="color:#dc2626">${e.detail || "Failed"}</span>`; return; }
+    const recap = await res.json();
+    state.recapData = recap;
+    renderRecapPreview(recap);
+  } catch (e) {
+    els.recapPreview.innerHTML = `<span class="recap-placeholder" style="color:#dc2626">${e}</span>`;
+  } finally {
+    els.generateRecapBtn.disabled = false;
+    els.generateRecapBtn.textContent = "Generate";
+  }
+}
+
+async function tryLoadExistingRecap() {
+  if (!state.sessionId) return;
+  try {
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/recap`);
+    if (res.ok) { const r = await res.json(); state.recapData = r; renderRecapPreview(r); }
+  } catch (_) {}
+}
+
+function downloadRecap() {
+  if (!state.recapData) return;
+  const r = state.recapData;
+  const lines = ["# Session Note\n"];
+  if (r.topic) lines.push(`## Topic\n${r.topic}\n`);
+  const sections = [["Key Insights", r.key_insights], ["Sources Referenced", r.sources_referenced], ["Open Questions", r.open_questions], ["Next Steps", r.next_steps]];
+  for (const [label, items] of sections) {
+    if (!items || !items.length) continue;
+    lines.push(`## ${label}`);
+    for (const item of items) lines.push(`- ${item}`);
+    lines.push("");
+  }
+  if (r.generated_at) lines.push(`---\n*Generated: ${new Date(r.generated_at).toLocaleString()}*`);
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), { href: url, download: `note-${(state.sessionId || "session").slice(0, 8)}.md` });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Follow-up suggestions ────────────────────────────────────────────────────
+
+async function fetchFollowUpSuggestions() {
+  if (!state.sessionId) return;
+  try {
+    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/recap/follow-up`, { method: "POST" });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.suggestions && data.suggestions.length) showFollowUpCard(data.suggestions);
+  } catch (_) {}
+}
+
+function showFollowUpCard(suggestions) {
+  const card = document.createElement("div");
+  card.className = "followup-card";
+  const title = document.createElement("div");
+  title.className = "followup-card-title";
+  title.textContent = "Suggested follow-ups";
+  card.appendChild(title);
+  const list = document.createElement("div");
+  list.className = "followup-suggestions";
+  for (const text of suggestions) {
+    const chip = document.createElement("div");
+    chip.className = "followup-chip";
+    chip.textContent = text;
+    list.appendChild(chip);
+  }
+  card.appendChild(list);
+  els.messages.appendChild(card);
+  scrollMessages();
+}
+
+// ── Audio helpers ────────────────────────────────────────────────────────────
+
+function uint8ArrayToBase64(bytes) {
+  const CHUNK = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += CHUNK)
+    binary += String.fromCharCode.apply(null, bytes.subarray(offset, Math.min(offset + CHUNK, bytes.length)));
   return btoa(binary);
 }
 
 function decodeBase64(b64) {
-  const bin   = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
-function pcm16ToFloat32(uint8) {
-  const view = new DataView(uint8.buffer, uint8.byteOffset, uint8.byteLength);
-  const f32  = new Float32Array(uint8.byteLength / 2);
-  for (let i = 0; i < f32.length; i++) f32[i] = view.getInt16(i * 2, true) / 32768;
-  return f32;
+function pcm16ToFloat32(u8) {
+  const v = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const f = new Float32Array(u8.byteLength / 2);
+  for (let i = 0; i < f.length; i++) f[i] = v.getInt16(i * 2, true) / 32768;
+  return f;
 }
 
 function floatTo16BitPCM(f32) {
@@ -513,49 +667,40 @@ function floatTo16BitPCM(f32) {
   return new Uint8Array(buf);
 }
 
-function downsample(buffer, fromRate, toRate) {
-  if (fromRate === toRate) return buffer;
+function downsample(buf, fromRate, toRate) {
+  if (fromRate === toRate) return buf;
   const ratio  = fromRate / toRate;
-  const newLen = Math.round(buffer.length / ratio);
-  const result = new Float32Array(newLen);
+  const newLen = Math.round(buf.length / ratio);
+  const out    = new Float32Array(newLen);
   for (let i = 0; i < newLen; i++) {
     const start = Math.round(i * ratio);
     const end   = Math.round((i + 1) * ratio);
-    let accum = 0, count = 0;
-    for (let j = start; j < end && j < buffer.length; j++) { accum += buffer[j]; count++; }
-    result[i] = count > 0 ? accum / count : 0;
+    let sum = 0, cnt = 0;
+    for (let j = start; j < end && j < buf.length; j++) { sum += buf[j]; cnt++; }
+    out[i] = cnt > 0 ? sum / cnt : 0;
   }
-  return result;
+  return out;
 }
 
-// ── Playback ──────────────────────────────────────────────────────────────────
-
 async function ensureAudioContext() {
-  if (!state.audioContext) {
+  if (!state.audioContext)
     state.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (state.audioContext.state === "suspended") {
+  if (state.audioContext.state === "suspended")
     await state.audioContext.resume();
-  }
 }
 
 async function enqueueAssistantAudio(b64) {
   await ensureAudioContext();
-
-  const bytes = decodeBase64(b64);
-  const f32   = pcm16ToFloat32(bytes);
-  const buf   = state.audioContext.createBuffer(1, f32.length, ASSISTANT_PCM_RATE);
+  const f32 = pcm16ToFloat32(decodeBase64(b64));
+  const buf = state.audioContext.createBuffer(1, f32.length, ASSISTANT_PCM_RATE);
   buf.copyToChannel(f32, 0);
-
   const src = state.audioContext.createBufferSource();
   src.buffer = buf;
   src.connect(state.audioContext.destination);
-
   const now = state.audioContext.currentTime;
   if (state.playbackTime < now) state.playbackTime = now;
   src.start(state.playbackTime);
   state.playbackTime += buf.duration;
-
   state.activeAudioNodes.push(src);
   src.onended = () => {
     const idx = state.activeAudioNodes.indexOf(src);
@@ -564,119 +709,66 @@ async function enqueueAssistantAudio(b64) {
 }
 
 function stopAssistantAudio() {
-  for (const node of [...state.activeAudioNodes]) {
-    try { node.stop(); } catch (_) {}
-  }
+  for (const n of [...state.activeAudioNodes]) { try { n.stop(); } catch (_) {} }
   state.activeAudioNodes.length = 0;
   if (state.audioContext) state.playbackTime = state.audioContext.currentTime;
 }
 
-// ── Microphone capture ────────────────────────────────────────────────────────
+// ── Microphone ───────────────────────────────────────────────────────────────
 
-/**
- * Shared processing callback – called from either the AudioWorklet message
- * handler or the ScriptProcessor onaudioprocess handler.
- * Downsamples, converts to PCM-16, and sends via WebSocket.
- */
-function _sendAudioChunk(f32, nativeSampleRate) {
+function _sendAudioChunk(f32, sr) {
   if (!state.conversationActive || !state.runtimeReady) return;
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-
-  const downsampled = downsample(f32, nativeSampleRate, USER_PCM_RATE);
-  const pcm = floatTo16BitPCM(downsampled);
-
-  wsSend({
-    type:      "audio_chunk",
-    mime_type: "audio/pcm;rate=16000",
-    data:      uint8ArrayToBase64(pcm),
-  });
+  const pcm = floatTo16BitPCM(downsample(f32, sr, USER_PCM_RATE));
+  wsSend({ type: "audio_chunk", mime_type: "audio/pcm;rate=16000", data: uint8ArrayToBase64(pcm) });
 }
 
 async function startMic() {
   await ensureAudioContext();
-
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount:     1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl:  true,
-    },
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   });
-
   state.mediaStream = stream;
   const source = state.audioContext.createMediaStreamSource(stream);
   const sr = state.audioContext.sampleRate;
-
-  // ── Primary: AudioWorklet (audio thread, zero main-thread blocking) ─────────
   let usedWorklet = false;
+
   if (window.AudioWorkletNode) {
     try {
       await state.audioContext.audioWorklet.addModule("/static/mic-processor.js");
-      const workletNode = new AudioWorkletNode(state.audioContext, "mic-processor");
-
-      workletNode.port.onmessage = (ev) => {
-        _sendAudioChunk(new Float32Array(ev.data), sr);
-      };
-
-      // Route through a silent gain so the audio graph stays active without
-      // feeding mic audio to speakers (which would cause echo).
+      const worklet = new AudioWorkletNode(state.audioContext, "mic-processor");
+      worklet.port.onmessage = (ev) => _sendAudioChunk(new Float32Array(ev.data), sr);
       const silentGain = state.audioContext.createGain();
       silentGain.gain.value = 0;
-      source.connect(workletNode);
-      workletNode.connect(silentGain);
+      source.connect(worklet);
+      worklet.connect(silentGain);
       silentGain.connect(state.audioContext.destination);
-
       state.mediaSourceNode = source;
-      state.workletNode     = workletNode;
+      state.workletNode = worklet;
       usedWorklet = true;
-
-    } catch (err) {
-      console.warn("AudioWorklet unavailable, falling back to ScriptProcessor:", err);
-    }
+    } catch (e) { console.warn("AudioWorklet fallback:", e); }
   }
 
-  // ── Fallback: ScriptProcessor (main thread) ──────────────────────────────
   if (!usedWorklet) {
-    const processor = state.audioContext.createScriptProcessor(4096, 1, 1);
-
-    processor.onaudioprocess = (ev) => {
-      // slice() copies the buffer so it remains valid after the event
-      _sendAudioChunk(ev.inputBuffer.getChannelData(0).slice(), sr);
-    };
-
+    const proc = state.audioContext.createScriptProcessor(4096, 1, 1);
+    proc.onaudioprocess = (ev) => _sendAudioChunk(ev.inputBuffer.getChannelData(0).slice(), sr);
     const silentGain = state.audioContext.createGain();
     silentGain.gain.value = 0;
-    source.connect(processor);
-    processor.connect(silentGain);
+    source.connect(proc);
+    proc.connect(silentGain);
     silentGain.connect(state.audioContext.destination);
-
     state.mediaSourceNode = source;
-    state.processorNode   = processor;
+    state.processorNode = proc;
   }
 
   setMicActive(true);
 }
 
 function stopMic() {
-  if (state.workletNode) {
-    state.workletNode.port.onmessage = null;
-    state.workletNode.disconnect();
-    state.workletNode = null;
-  }
-  if (state.processorNode) {
-    state.processorNode.onaudioprocess = null;
-    state.processorNode.disconnect();
-    state.processorNode = null;
-  }
-  if (state.mediaSourceNode) {
-    state.mediaSourceNode.disconnect();
-    state.mediaSourceNode = null;
-  }
-  if (state.mediaStream) {
-    state.mediaStream.getTracks().forEach(t => t.stop());
-    state.mediaStream = null;
-  }
+  if (state.workletNode) { state.workletNode.port.onmessage = null; state.workletNode.disconnect(); state.workletNode = null; }
+  if (state.processorNode) { state.processorNode.onaudioprocess = null; state.processorNode.disconnect(); state.processorNode = null; }
+  if (state.mediaSourceNode) { state.mediaSourceNode.disconnect(); state.mediaSourceNode = null; }
+  if (state.mediaStream) { state.mediaStream.getTracks().forEach(t => t.stop()); state.mediaStream = null; }
   setMicActive(false);
 }
 
@@ -686,72 +778,54 @@ function openWebSocket(sessionId) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`${WS_BASE}/ws/live/${sessionId}`);
     state.ws = ws;
-
     let settled = false;
-    const settle = (fn, val) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      fn(val);
-    };
-
-    const timer = setTimeout(
-      () => settle(reject, new Error("WebSocket connection timed out")), 15_000
-    );
+    const settle = (fn, val) => { if (settled) return; settled = true; clearTimeout(timer); fn(val); };
+    const timer = setTimeout(() => settle(reject, new Error("WebSocket connection timed out")), 15_000);
 
     ws.onmessage = (ev) => {
-      const payload = JSON.parse(ev.data);
-      handleServerEvent(payload);
-      if (payload.type === "connected") settle(resolve);
+      const p = JSON.parse(ev.data);
+      handleServerEvent(p);
+      if (p.type === "connected") settle(resolve);
     };
-
     ws.onerror = () => settle(reject, new Error("WebSocket error"));
-
-    ws.onclose = (event) => {
-      settle(reject, new Error(`WebSocket closed (code ${event.code}) before connecting`));
+    ws.onclose = (ev) => {
+      settle(reject, new Error(`WebSocket closed (${ev.code}) before connecting`));
       state.runtimeReady = false;
       if (state.conversationActive) {
-        setStatus("Connection lost — please end and restart the conversation.");
+        setStatus("Connection lost — please restart.");
         addSystemMessage("Connection lost.");
         state.conversationActive = false;
         stopMic();
         updateButtons();
-      } else {
-        setStatus("Disconnected");
       }
     };
   });
 }
 
 function wsSend(obj) {
-  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-    state.ws.send(JSON.stringify(obj));
-  }
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify(obj));
 }
 
-// ── Server event handler ──────────────────────────────────────────────────────
+// ── Server event handler ─────────────────────────────────────────────────────
 
 function handleServerEvent(payload) {
   switch (payload.type) {
-
     case "connected":
-      setStatus(`Connected (session ${payload.session_id})`);
+      setStatus(`Connected`);
       break;
-
     case "runtime_connecting":
       setStatus("Starting Gemini Live…");
       break;
-
     case "runtime_ready":
       state.runtimeReady = true;
-      setStatus("Listening — speak to start the conversation");
+      setStatus("Listening — speak to start");
       break;
 
     case "user_transcript": {
       const text = (payload.text || "").trim();
       if (!text) break;
       state.currentUserText = text;
-      if (!state.liveUserBubble) state.liveUserBubble = createLiveBubble("user", "");
+      if (!state.liveUserBubble) state.liveUserBubble = createLiveBubble("user");
       state.liveUserBubble.textContent = `🎤 ${text}`;
       scrollMessages();
       break;
@@ -762,7 +836,7 @@ function handleServerEvent(payload) {
       const text = (payload.text || "").trim();
       if (!text) break;
       state.currentAssistantText += (state.currentAssistantText ? " " : "") + text;
-      if (!state.liveAssistantBubble) state.liveAssistantBubble = createLiveBubble("assistant", "");
+      if (!state.liveAssistantBubble) state.liveAssistantBubble = createLiveBubble("assistant");
       state.liveAssistantBubble.textContent = `🔊 ${state.currentAssistantText}`;
       scrollMessages();
       break;
@@ -770,17 +844,14 @@ function handleServerEvent(payload) {
 
     case "assistant_audio_chunk":
       enqueueAssistantAudio(payload.data);
-      if (!state.liveAssistantBubble) {
-        state.liveAssistantBubble = createLiveBubble("assistant", "🔊 …");
-      }
+      if (!state.liveAssistantBubble) state.liveAssistantBubble = createLiveBubble("assistant");
       break;
 
     case "assistant_interrupted":
       stopAssistantAudio();
       if (state.liveAssistantBubble) {
-        const txt = state.currentAssistantText.trim();
-        finaliseBubble(state.liveAssistantBubble, txt ? `${txt} ✂` : null);
-        state.liveAssistantBubble  = null;
+        finaliseBubble(state.liveAssistantBubble, state.currentAssistantText.trim() ? `${state.currentAssistantText.trim()} ✂` : null);
+        state.liveAssistantBubble = null;
         state.currentAssistantText = "";
       }
       setStatus("Interrupted — listening…");
@@ -788,33 +859,22 @@ function handleServerEvent(payload) {
 
     case "turn_complete":
       finaliseBubble(state.liveUserBubble, state.currentUserText);
-      state.liveUserBubble  = null;
-      state.currentUserText = "";
-
-      finaliseBubble(
-        state.liveAssistantBubble,
-        state.currentAssistantText || "(audio response)"
-      );
-      state.liveAssistantBubble  = null;
-      state.currentAssistantText = "";
-
+      state.liveUserBubble = null; state.currentUserText = "";
+      finaliseBubble(state.liveAssistantBubble, state.currentAssistantText || "(audio response)");
+      state.liveAssistantBubble = null; state.currentAssistantText = "";
       if (state.conversationActive) setStatus("Listening…");
       break;
 
     case "source_cues":
-      renderSourceCues(payload.evidence || []);
-      break;
-
-    case "interrupt_ack":
-      setStatus("Interrupted — listening…");
+      renderCitations(payload.evidence || []);
       break;
 
     case "runtime_closed":
       state.runtimeReady = false;
       if (state.conversationActive) {
         state.startupFailed = true;
-        setStatus("Gemini Live session closed. Please end and restart.");
-        addSystemMessage("Session disconnected. End the conversation and start a new one.");
+        setStatus("Session closed. Please end and restart.");
+        addSystemMessage("Session disconnected.");
         state.conversationActive = false;
         stopMic();
         updateButtons();
@@ -829,77 +889,45 @@ function handleServerEvent(payload) {
       break;
 
     default:
-      console.debug("Unhandled server event:", payload);
+      console.debug("Unhandled:", payload);
   }
 }
 
-// ── Session management ────────────────────────────────────────────────────────
-
-async function createSession() {
-  const title = (els.sessionTitle.value || "").trim() || "Live session";
-  const res = await fetch(`${API_BASE}/sessions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-  });
-  if (!res.ok) throw new Error(`Create session failed: ${res.status}`);
-
-  const data = await res.json();
-  state.sessionId     = data.session_id;
-  els.sessionId.value = data.session_id;
-  setStatus("Session created — click Begin Conversation to start");
-  addSystemMessage(`Session created: ${data.session_id}`);
-  await loadSources();
-}
-
-// ── Main conversation flow ────────────────────────────────────────────────────
+// ── Conversation flow ────────────────────────────────────────────────────────
 
 async function beginConversation() {
-  const sessionId = (els.sessionId.value || "").trim();
-  if (!sessionId) throw new Error("Session ID required. Create a session first.");
+  if (!state.sessionId) throw new Error("Select or create a session first.");
 
-  state.sessionId          = sessionId;
   state.conversationActive = true;
-  state.startupFailed      = false;
+  state.startupFailed = false;
   updateButtons();
-
-  loadSources();  // non-blocking refresh
+  loadSources();
 
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
     setStatus("Connecting…");
-    await openWebSocket(sessionId);
+    await openWebSocket(state.sessionId);
   }
 
-  setStatus("Starting Gemini Live runtime…");
+  setStatus("Starting Gemini Live…");
   wsSend({ type: "begin_conversation" });
 
-  await waitFor(
-    () => state.runtimeReady || state.startupFailed,
-    30_000,
-    "Gemini Live startup timed out"
-  );
-  if (!state.runtimeReady) {
-    throw new Error("Gemini Live failed to start. Check API credentials and try again.");
-  }
+  await waitFor(() => state.runtimeReady || state.startupFailed, 90_000, "Gemini Live startup timed out");
+  if (!state.runtimeReady) throw new Error("Gemini Live failed to start. Check credentials.");
 
   await startMic();
   setStatus("Listening — speak naturally");
-  addSystemMessage("Conversation started. Speak to begin. Click End Conversation when done.");
+  addSystemMessage("Conversation started. Speak to begin.");
 }
 
 async function endConversation() {
   state.conversationActive = false;
-
   stopMic();
   stopAssistantAudio();
 
   finaliseBubble(state.liveUserBubble, state.currentUserText);
-  state.liveUserBubble  = null;
-  state.currentUserText = "";
-
+  state.liveUserBubble = null; state.currentUserText = "";
   finaliseBubble(state.liveAssistantBubble, state.currentAssistantText);
-  state.liveAssistantBubble  = null;
-  state.currentAssistantText = "";
+  state.liveAssistantBubble = null; state.currentAssistantText = "";
 
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     wsSend({ type: "end_conversation" });
@@ -910,65 +938,85 @@ async function endConversation() {
   updateButtons();
   setStatus("Conversation ended");
   addSystemMessage("Conversation ended.");
+
+  fetchFollowUpSuggestions();
+  loadSessionList();  // refresh to show updated message count
 }
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+// ── Utility ──────────────────────────────────────────────────────────────────
 
-function waitFor(condition, timeout = 10_000, msg = "Timeout") {
+function waitFor(cond, timeout = 10_000, msg = "Timeout") {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const id = setInterval(() => {
-      if (condition()) { clearInterval(id); resolve(); }
+      if (cond()) { clearInterval(id); resolve(); }
       else if (Date.now() - start > timeout) { clearInterval(id); reject(new Error(msg)); }
     }, 100);
   });
 }
 
-// ── Event listeners ───────────────────────────────────────────────────────────
+// ── Event listeners ──────────────────────────────────────────────────────────
 
-els.createBtn.addEventListener("click", async () => {
-  els.createBtn.disabled = true;
+els.newChatBtn.addEventListener("click", async () => {
+  if (state.conversationActive) {
+    if (!confirm("End current conversation and start new?")) return;
+    await endConversation();
+  }
   try {
-    await createSession();
-  } catch (err) {
-    setStatus(String(err));
-    addSystemMessage(String(err));
-  } finally {
-    els.createBtn.disabled = false;
+    const data = await createSession("New conversation");
+    state.sessionId = data.session_id;
+    state.sessionSourceCount = 0;
+    state.recapData = null;
+
+    els.messages.innerHTML = "";
+    renderSources([]);
+    renderRecapPreview(null);
+    webState.results = [];
+    renderWebResults();
+    setStatus("New session ready — click Begin Conversation");
+    updateButtons();
+
+    addSystemMessage(`Session created: ${data.session_id}`);
+    await loadSessionList();
+
+    // Highlight the new session
+    document.querySelectorAll(".session-item").forEach(el => {
+      el.classList.toggle("active", el.dataset.sessionId === data.session_id);
+    });
+  } catch (e) {
+    setStatus(`Error: ${e.message}`);
   }
 });
 
 els.beginBtn.addEventListener("click", async () => {
   try {
     await beginConversation();
-  } catch (err) {
+  } catch (e) {
     state.conversationActive = false;
     updateButtons();
-    setStatus(String(err));
-    addSystemMessage(`Error: ${err}`);
-    console.error(err);
+    setStatus(String(e));
+    addSystemMessage(`Error: ${e}`);
+    console.error(e);
   }
 });
 
 els.endBtn.addEventListener("click", () => {
-  endConversation().catch(err => { setStatus(String(err)); console.error(err); });
+  endConversation().catch(e => { setStatus(String(e)); console.error(e); });
 });
 
 els.fileInput.addEventListener("change", () => {
-  const file = els.fileInput.files[0];
-  if (file) uploadFile(file);
+  const f = els.fileInput.files[0];
+  if (f) uploadFile(f);
 });
 
 els.webSearchBtn.addEventListener("click", performWebSearch);
-els.webSearchInput.addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") performWebSearch();
-});
-
+els.webSearchInput.addEventListener("keydown", e => { if (e.key === "Enter") performWebSearch(); });
 els.addWebBtn.addEventListener("click", addSelectedWebSources);
 
-els.sessionId.addEventListener("change", () => {
-  const id = els.sessionId.value.trim();
-  if (id) { state.sessionId = id; loadSources(); }
-});
+els.generateRecapBtn.addEventListener("click", generateRecap);
+els.downloadRecapBtn.addEventListener("click", downloadRecap);
+
+// ── Init ─────────────────────────────────────────────────────────────────────
 
 updateButtons();
+loadSessionList();

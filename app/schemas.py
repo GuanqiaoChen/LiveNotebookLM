@@ -111,3 +111,9 @@ class RecapData(BaseModel):
     open_questions: list[str] = Field(default_factory=list)
     next_steps: list[str] = Field(default_factory=list)
     generated_at: Optional[datetime] = None
+
+
+class FollowUpResponse(BaseModel):
+    session_id: str
+    suggestions: list[str] = Field(default_factory=list)
+    generated_at: Optional[datetime] = None

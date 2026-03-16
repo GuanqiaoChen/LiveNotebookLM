@@ -5,351 +5,487 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LiveNotebookLM</title>
   <style>
-    /* ── Reset & base ─────────────────────────────────────────────────── */
+    /* ── Reset ──────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: "Inter", "Segoe UI", Arial, sans-serif;
-      background: #0f1117;
-      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #ffffff;
+      color: #111827;
       height: 100vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      font-size: 14px;
     }
 
-    /* ── Header ───────────────────────────────────────────────────────── */
+    /* ── Header ─────────────────────────────────────────────────────────── */
     .header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 14px 24px;
-      background: #151820;
-      border-bottom: 1px solid #2a2f3e;
+      gap: 10px;
+      padding: 0 20px;
+      height: 52px;
+      background: #ffffff;
+      border-bottom: 1px solid #e5e7eb;
       flex-shrink: 0;
+      z-index: 10;
     }
     .header h1 {
-      font-size: 20px;
+      font-size: 16px;
       font-weight: 700;
-      letter-spacing: -0.3px;
-      color: #f1f5f9;
+      color: #111827;
+      letter-spacing: -0.2px;
     }
-    .badge {
+    .header-badge {
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      padding: 3px 10px;
-      background: linear-gradient(135deg, #1e40af, #7c3aed);
+      padding: 2px 9px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 600;
-      color: #e0e7ff;
-      letter-spacing: 0.3px;
+      color: #1d4ed8;
     }
-    .badge-dot {
+    .header-badge-dot {
       width: 6px; height: 6px;
-      background: #60a5fa;
+      background: #3b82f6;
       border-radius: 50%;
     }
 
-    /* ── Layout ───────────────────────────────────────────────────────── */
+    /* ── Layout ─────────────────────────────────────────────────────────── */
     .layout {
       display: grid;
-      grid-template-columns: 290px 1fr 260px;
-      grid-template-rows: 1fr;
-      gap: 0;
+      grid-template-columns: 256px 1fr 300px;
       flex: 1;
       overflow: hidden;
     }
 
-    /* ── Panels ───────────────────────────────────────────────────────── */
-    .panel {
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    .sidebar {
       display: flex;
       flex-direction: column;
+      background: #f9fafb;
+      border-right: 1px solid #e5e7eb;
       overflow: hidden;
     }
-    .panel-left  { background: #151820; border-right: 1px solid #2a2f3e; }
-    .panel-main  { background: #0f1117; }
-    .panel-right { background: #151820; border-left:  1px solid #2a2f3e; }
 
-    .panel-header {
-      padding: 14px 16px 10px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: #64748b;
-      border-bottom: 1px solid #2a2f3e;
+    .sidebar-top {
+      padding: 12px 10px 8px;
       flex-shrink: 0;
     }
 
-    .panel-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 16px;
-    }
-    .panel-body::-webkit-scrollbar { width: 4px; }
-    .panel-body::-webkit-scrollbar-thumb { background: #2a2f3e; border-radius: 4px; }
-
-    /* ── Section headers ──────────────────────────────────────────────── */
-    .section-header {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-      color: #64748b;
-      margin-bottom: 8px;
+    #newChatBtn {
       display: flex;
       align-items: center;
       gap: 8px;
+      width: 100%;
+      padding: 9px 12px;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #newChatBtn:hover { background: #1d4ed8; }
+    #newChatBtn:active { background: #1e40af; }
+
+    .session-list-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 10px;
+    }
+    .session-list-wrap::-webkit-scrollbar { width: 4px; }
+    .session-list-wrap::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+    .session-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #9ca3af;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      padding: 10px 4px 4px;
     }
 
-    .count-badge {
-      background: #1e2433;
-      border: 1px solid #2a3347;
-      color: #94a3b8;
+    .session-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      margin-bottom: 1px;
+      transition: background 0.1s;
+      min-width: 0;
+    }
+    .session-item:hover { background: #f3f4f6; }
+    .session-item.active { background: #eff6ff; }
+    .session-item-icon { font-size: 14px; flex-shrink: 0; color: #6b7280; }
+    .session-item-title {
+      flex: 1;
+      font-size: 13px;
+      color: #374151;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .session-item.active .session-item-title { color: #1d4ed8; font-weight: 500; }
+    .session-count {
+      font-size: 11px;
+      color: #9ca3af;
+      flex-shrink: 0;
+    }
+
+    .session-list-empty {
+      padding: 20px 4px;
+      font-size: 13px;
+      color: #9ca3af;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ── Citations (bottom of sidebar) ──────────────────────────────────── */
+    .citations-section {
+      flex-shrink: 0;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      max-height: 240px;
+      min-height: 80px;
+    }
+    .citations-header {
+      padding: 10px 14px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: #6b7280;
+      flex-shrink: 0;
+    }
+    .citations-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 10px 10px;
+    }
+    .citations-body::-webkit-scrollbar { width: 3px; }
+    .citations-body::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+
+    .citation-item {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .citation-name {
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .citation-meta { font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+    .citation-snippet {
+      color: #6b7280;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* ── Main / conversation ─────────────────────────────────────────────── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 32px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+    /* ── Message bubbles ─────────────────────────────────────────────────── */
+    .msg {
+      max-width: 72%;
+      padding: 10px 14px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: #eff6ff;
+      color: #1e3a8a;
+      border-bottom-right-radius: 4px;
+    }
+    .msg.assistant {
+      align-self: flex-start;
+      background: #f9fafb;
+      color: #111827;
+      border: 1px solid #e5e7eb;
+      border-bottom-left-radius: 4px;
+    }
+    .msg.system {
+      align-self: center;
+      background: transparent;
+      color: #9ca3af;
+      font-size: 12px;
+      padding: 2px 0;
+      max-width: 100%;
+    }
+    .bubble-live {
+      opacity: 0.7;
+      animation: bubble-in 0.2s ease-out;
+    }
+    @keyframes bubble-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 0.7; }
+    }
+
+    /* ── Follow-up suggestions ───────────────────────────────────────────── */
+    .followup-card {
+      align-self: center;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 12px;
+      padding: 14px 16px;
+      max-width: 88%;
+      width: 100%;
+      margin-top: 4px;
+    }
+    .followup-card-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #16a34a;
+      margin-bottom: 9px;
+    }
+    .followup-suggestions { display: flex; flex-direction: column; gap: 6px; }
+    .followup-chip {
+      background: #fff;
+      border: 1px solid #d1fae5;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      color: #374151;
+      line-height: 1.4;
+      cursor: default;
+      transition: border-color 0.15s;
+    }
+    .followup-chip:hover { border-color: #6ee7b7; }
+
+    /* ── Conversation bar ────────────────────────────────────────────────── */
+    .conv-bar {
+      flex-shrink: 0;
+      border-top: 1px solid #e5e7eb;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fff;
+    }
+    .conv-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .conv-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .mic-indicator {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .mic-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    .mic-off { background: #d1d5db; }
+    .mic-on  {
+      background: #22c55e;
+      box-shadow: 0 0 0 0 rgba(34,197,94,0.5);
+      animation: mic-pulse 1.4s ease-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%   { box-shadow: 0 0 0 0   rgba(34,197,94,0.5); }
+      70%  { box-shadow: 0 0 0 7px rgba(34,197,94,0);   }
+      100% { box-shadow: 0 0 0 0   rgba(34,197,94,0);   }
+    }
+
+    #statusBox {
+      font-size: 13px;
+      color: #6b7280;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 280px;
+    }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 8px 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.13s, opacity 0.13s;
+      white-space: nowrap;
+      line-height: 1;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:active:not(:disabled) { transform: scale(0.97); }
+
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:not(:disabled):hover { background: #1d4ed8; }
+
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-success:not(:disabled):hover { background: #15803d; }
+
+    .btn-danger  { background: #dc2626; color: #fff; }
+    .btn-danger:not(:disabled):hover  { background: #b91c1c; }
+
+    .btn-ghost {
+      background: #f3f4f6;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+    }
+    .btn-ghost:not(:disabled):hover { background: #e5e7eb; }
+
+    .btn-sm { padding: 6px 10px; font-size: 12px; }
+    .btn-full { width: 100%; }
+
+    /* ── Right panel ─────────────────────────────────────────────────────── */
+    .right-panel {
+      display: flex;
+      flex-direction: column;
+      background: #f9fafb;
+      border-left: 1px solid #e5e7eb;
+      overflow-y: auto;
+    }
+    .right-panel::-webkit-scrollbar { width: 4px; }
+    .right-panel::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+    .right-section {
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .right-section:last-child { border-bottom: none; }
+
+    .right-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .right-section-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #6b7280;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .badge-count {
+      background: #e5e7eb;
+      color: #6b7280;
       font-size: 10px;
       font-weight: 600;
       padding: 1px 6px;
       border-radius: 999px;
     }
 
-    /* ── Form controls ────────────────────────────────────────────────── */
-    .field-label {
-      font-size: 11px;
-      font-weight: 600;
-      color: #94a3b8;
-      margin-bottom: 5px;
-      letter-spacing: 0.3px;
-    }
-    .field-group {
-      margin-bottom: 14px;
-    }
-    input[type="text"] {
-      width: 100%;
-      background: #1e2433;
-      border: 1px solid #2a3347;
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 13px;
-      color: #e2e8f0;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    input[type="text"]:focus { border-color: #4f6ef7; }
-
-    /* ── Buttons ──────────────────────────────────────────────────────── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 9px 14px;
-      border: none;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity 0.15s, transform 0.1s;
-      white-space: nowrap;
-    }
-    .btn:active:not(:disabled) { transform: scale(0.97); }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    .btn-primary  { background: #4f6ef7; color: #fff; }
-    .btn-primary:not(:disabled):hover  { background: #3b5bdb; }
-
-    .btn-success  { background: #16a34a; color: #fff; }
-    .btn-success:not(:disabled):hover  { background: #15803d; }
-
-    .btn-danger   { background: #b91c1c; color: #fff; }
-    .btn-danger:not(:disabled):hover   { background: #991b1b; }
-
-    .btn-ghost    { background: #1e2433; color: #cbd5e1; border: 1px solid #2a3347; }
-    .btn-ghost:not(:disabled):hover    { background: #252e42; }
-
-    .btn-sm { padding: 6px 11px; font-size: 12px; }
-    .btn-full { width: 100%; }
-
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 10px;
-      flex-wrap: wrap;
-    }
-
-    /* ── Mic indicator ────────────────────────────────────────────────── */
-    .mic-strip {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: #1e2433;
-      margin-bottom: 14px;
-      font-size: 12px;
-      color: #94a3b8;
-    }
-    .mic-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      transition: background 0.3s;
-    }
-    .mic-off { background: #374151; }
-    .mic-on  {
-      background: #22c55e;
-      box-shadow: 0 0 0 0 rgba(34,197,94,0.6);
-      animation: mic-pulse 1.4s ease-out infinite;
-    }
-    @keyframes mic-pulse {
-      0%   { box-shadow: 0 0 0 0   rgba(34,197,94,0.6); }
-      70%  { box-shadow: 0 0 0 8px rgba(34,197,94,0);   }
-      100% { box-shadow: 0 0 0 0   rgba(34,197,94,0);   }
-    }
-
-    /* ── Status box ───────────────────────────────────────────────────── */
-    .status-box {
-      background: #1e2433;
-      border: 1px solid #2a3347;
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 12px;
-      color: #94a3b8;
-      line-height: 1.5;
-      min-height: 38px;
-      word-break: break-word;
-    }
-
-    /* ── Conversation area ────────────────────────────────────────────── */
-    #messages {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      padding: 20px;
-      height: 100%;
-      overflow-y: auto;
-    }
-    #messages::-webkit-scrollbar { width: 4px; }
-    #messages::-webkit-scrollbar-thumb { background: #2a2f3e; border-radius: 4px; }
-
-    /* ── Message bubbles ──────────────────────────────────────────────── */
-    .msg {
-      max-width: 78%;
-      padding: 10px 14px;
-      border-radius: 14px;
-      font-size: 14px;
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .msg.user {
-      align-self: flex-end;
-      background: #1d3461;
-      color: #bfdbfe;
-      border-bottom-right-radius: 4px;
-    }
-    .msg.assistant {
-      align-self: flex-start;
-      background: #1e2433;
-      color: #e2e8f0;
-      border-bottom-left-radius: 4px;
-    }
-    .msg.system {
-      align-self: center;
-      background: transparent;
-      color: #64748b;
-      font-size: 12px;
-      font-style: italic;
-      padding: 4px 0;
-      max-width: 100%;
-    }
-
-    /* Live (streaming) bubbles */
-    .bubble-live {
-      opacity: 0.75;
-      border: 1px solid #4f6ef740;
-      animation: bubble-appear 0.2s ease-out;
-    }
-    @keyframes bubble-appear {
-      from { opacity: 0; transform: translateY(4px); }
-      to   { opacity: 0.75; transform: translateY(0); }
-    }
-
-    /* ── Source cues (right panel) ────────────────────────────────────── */
-    #sourceCues {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .source-cue-item {
-      background: #1a1f2e;
-      border: 1px solid #2a3347;
-      border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 12px;
-    }
-    .source-head { font-weight: 600; color: #a5b4fc; margin-bottom: 3px; }
-    .source-meta { color: #64748b; font-size: 11px; margin-bottom: 6px; }
-    .source-snippet {
-      color: #94a3b8;
-      line-height: 1.5;
-      display: -webkit-box;
-      -webkit-line-clamp: 4;
-      line-clamp: 4;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .muted { color: #475569; font-size: 12px; font-style: italic; }
-
-    /* ── Source list (left panel) ─────────────────────────────────────── */
+    /* ── Source list ─────────────────────────────────────────────────────── */
     .source-list-item {
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding: 5px 8px;
-      background: #1e2433;
-      border: 1px solid #2a3347;
-      border-radius: 6px;
+      gap: 7px;
+      padding: 6px 8px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
       margin-bottom: 5px;
     }
     .source-list-icon { font-size: 13px; flex-shrink: 0; }
     .source-list-name {
       flex: 1;
       font-size: 12px;
-      color: #cbd5e1;
+      color: #374151;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .source-list-status {
-      font-size: 10px;
-      color: #475569;
-      flex-shrink: 0;
-    }
+    .source-list-status { font-size: 11px; flex-shrink: 0; }
     .source-del-btn {
       background: none;
       border: none;
       cursor: pointer;
-      color: #475569;
-      font-size: 14px;
+      color: #9ca3af;
+      font-size: 13px;
       padding: 0 2px;
       flex-shrink: 0;
       line-height: 1;
     }
-    .source-del-btn:hover { color: #ef4444; }
+    .source-del-btn:hover { color: #dc2626; }
 
-    /* ── Web search results ───────────────────────────────────────────── */
+    /* ── Web search results ──────────────────────────────────────────────── */
+    .search-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .search-row input { flex: 1; }
+    .search-row .btn { flex-shrink: 0; }
+
     .web-result-item {
       padding: 7px 9px;
-      background: #1e2433;
-      border: 1px solid #2a3347;
-      border-radius: 6px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
       margin-bottom: 5px;
-      transition: border-color 0.15s;
+      transition: border-color 0.13s;
     }
-    .web-result-item.checked { border-color: #4f6ef7; background: #1a2340; }
-
+    .web-result-item.checked { border-color: #93c5fd; background: #eff6ff; }
     .web-result-label {
       display: flex;
       gap: 7px;
@@ -359,24 +495,23 @@
     .web-result-label input[type="checkbox"] {
       margin-top: 3px;
       flex-shrink: 0;
-      accent-color: #4f6ef7;
+      accent-color: #2563eb;
       cursor: pointer;
     }
     .web-result-text { flex: 1; min-width: 0; }
     .web-result-title {
       font-size: 12px;
       font-weight: 600;
-      color: #a5b4fc;
-      line-height: 1.3;
+      color: #2563eb;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .web-result-snippet {
       font-size: 11px;
-      color: #64748b;
-      line-height: 1.4;
+      color: #6b7280;
       margin-top: 2px;
+      line-height: 1.4;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       line-clamp: 2;
@@ -384,190 +519,210 @@
       overflow: hidden;
     }
 
-    /* ── Error banner ─────────────────────────────────────────────────── */
+    /* ── Recap ───────────────────────────────────────────────────────────── */
+    .recap-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .recap-preview {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.6;
+      max-height: 200px;
+      overflow-y: auto;
+      margin: 8px 0;
+    }
+    .recap-preview::-webkit-scrollbar { width: 3px; }
+    .recap-preview::-webkit-scrollbar-thumb { background: #d1d5db; }
+    .recap-placeholder { color: #9ca3af; font-style: italic; }
+    .recap-topic { font-weight: 700; color: #111827; font-size: 13px; margin-bottom: 6px; }
+    .recap-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #2563eb;
+      margin: 6px 0 2px;
+    }
+    .recap-list { list-style: none; padding: 0; }
+    .recap-list li { padding: 1px 0 1px 12px; position: relative; }
+    .recap-list li::before { content: "·"; position: absolute; left: 2px; color: #2563eb; }
+
+    /* ── Form inputs ─────────────────────────────────────────────────────── */
+    input[type="text"] {
+      width: 100%;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 13px;
+      color: #111827;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="text"]:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+    }
+
+    /* ── Error banner ─────────────────────────────────────────────────────── */
     .error-banner {
-      background: #450a0a;
-      border: 1px solid #7f1d1d;
-      color: #fca5a5;
-      border-radius: 6px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      border-radius: 7px;
       padding: 7px 10px;
       font-size: 12px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       line-height: 1.4;
     }
 
-    /* ── Divider ──────────────────────────────────────────────────────── */
-    .divider {
-      height: 1px;
-      background: #2a2f3e;
-      margin: 14px 0;
+    /* ── Misc ────────────────────────────────────────────────────────────── */
+    .muted-text { color: #9ca3af; font-size: 12px; font-style: italic; }
+    .upload-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 10px;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      cursor: pointer;
+      transition: background 0.13s;
+      white-space: nowrap;
     }
+    .upload-label:hover { background: #e5e7eb; }
 
-    /* ── Search row ───────────────────────────────────────────────────── */
-    .search-row {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 10px;
-    }
-    .search-row input[type="text"] { flex: 1; }
-    .search-row .btn { flex-shrink: 0; }
-
-    /* ── Responsive ───────────────────────────────────────────────────── */
+    /* ── Responsive ──────────────────────────────────────────────────────── */
     @media (max-width: 900px) {
-      .layout {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr auto;
-      }
-      .panel-left, .panel-right {
-        border: none;
-        border-bottom: 1px solid #2a2f3e;
-      }
+      .layout { grid-template-columns: 1fr; }
+      .sidebar, .right-panel { display: none; }
     }
   </style>
 </head>
 <body>
 
-  <!-- ── Header ──────────────────────────────────────────────────────────── -->
+  <!-- Header -->
   <header class="header">
     <h1>LiveNotebookLM</h1>
-    <span class="badge">
-      <span class="badge-dot"></span>
+    <span class="header-badge">
+      <span class="header-badge-dot"></span>
       Gemini Live
     </span>
   </header>
 
-  <!-- ── Main layout ─────────────────────────────────────────────────────── -->
+  <!-- Layout -->
   <div class="layout">
 
-    <!-- Left panel: Session + Sources + Web Search ──────────────────────── -->
-    <aside class="panel panel-left">
-      <div class="panel-header">Controls</div>
-      <div class="panel-body">
+    <!-- ── Left sidebar: sessions + citations ──────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <button id="newChatBtn">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          New Conversation
+        </button>
+      </div>
 
-        <!-- Create session -->
-        <div class="field-group">
-          <div class="field-label">Session title</div>
-          <input id="sessionTitle" type="text" value="Live session" />
+      <div class="session-list-wrap" id="sessionListWrap">
+        <div class="session-list-empty">No sessions yet.<br>Click "New Conversation" to start.</div>
+      </div>
+
+      <div class="citations-section">
+        <div class="citations-header">Citations</div>
+        <div class="citations-body">
+          <div id="sourceCues">
+            <p class="muted-text">Evidence appears after each turn.</p>
+          </div>
         </div>
-        <div class="btn-row">
-          <button id="createSessionBtn" class="btn btn-ghost btn-sm">
-            ＋ Create Session
-          </button>
+      </div>
+    </aside>
+
+    <!-- ── Centre: conversation ─────────────────────────────────────────── -->
+    <main class="main">
+      <div id="messages"></div>
+
+      <div class="conv-bar">
+        <div class="conv-bar-left">
+          <div class="mic-indicator">
+            <span class="mic-dot mic-off" id="micIndicator"></span>
+            <span id="micLabel">Mic off</span>
+          </div>
+          <span id="statusBox">Idle — create or select a session</span>
         </div>
-
-        <div class="field-group">
-          <div class="field-label">Session ID</div>
-          <input id="sessionId" type="text" placeholder="Create or paste a session ID" />
+        <div class="conv-bar-right">
+          <button id="beginConvBtn" class="btn btn-success">▶ Begin</button>
+          <button id="endConvBtn"   class="btn btn-ghost" disabled>■ End</button>
         </div>
+      </div>
+    </main>
 
-        <div class="divider"></div>
+    <!-- ── Right panel: sources + web search + session note ────────────── -->
+    <aside class="right-panel">
 
-        <!-- Conversation controls -->
-        <div class="btn-row">
-          <button id="beginConvBtn" class="btn btn-success btn-full">
-            ▶ Begin Conversation
-          </button>
-        </div>
-        <div class="btn-row">
-          <button id="endConvBtn" class="btn btn-ghost btn-full" disabled>
-            ■ End Conversation
-          </button>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Mic indicator -->
-        <div class="mic-strip">
-          <span id="micIndicator" class="mic-dot mic-off" title="Mic off"></span>
-          <span id="micLabel">Microphone inactive</span>
-        </div>
-
-        <!-- Status -->
-        <div class="field-label">Status</div>
-        <div id="statusBox" class="status-box">Idle</div>
-
-        <div class="divider"></div>
-
-        <!-- ── Sources ─────────────────────────────────────────────────── -->
-        <div class="section-header">
-          Sources
-          <span id="sourceCount" class="count-badge">0/10</span>
-        </div>
-
-        <div id="sourceListError" class="error-banner" style="display:none;"></div>
-
-        <div id="sourceList">
-          <div class="muted">No sources yet.</div>
-        </div>
-
-        <div class="btn-row" style="margin-top:8px;">
-          <label class="btn btn-ghost btn-sm btn-full" style="cursor:pointer;" id="uploadLabel">
-            ↑ Upload File
-            <input id="fileUploadInput" type="file" accept=".pdf,.doc,.docx,.txt,.md" style="display:none"/>
+      <!-- Sources -->
+      <div class="right-section">
+        <div class="right-section-header">
+          <span class="right-section-title">
+            Sources
+            <span id="sourceCount" class="badge-count">0/10</span>
+          </span>
+          <label class="upload-label" id="uploadLabel">
+            ↑ Upload
+            <input id="fileUploadInput" type="file" accept=".pdf,.doc,.docx,.txt,.md" style="display:none" />
           </label>
         </div>
+        <div id="sourceListError" class="error-banner" style="display:none;"></div>
+        <div id="sourceList">
+          <p class="muted-text">No sources yet.</p>
+        </div>
+      </div>
 
-        <div class="divider"></div>
-
-        <!-- ── Web Search ──────────────────────────────────────────────── -->
-        <div class="section-header">Web Search</div>
-
+      <!-- Web Search -->
+      <div class="right-section">
+        <div class="right-section-header">
+          <span class="right-section-title">Web Search</span>
+        </div>
         <div id="webSearchError" class="error-banner" style="display:none;"></div>
-
         <div class="search-row">
           <input id="webSearchInput" type="text" placeholder="Search the web…" />
           <button id="webSearchBtn" class="btn btn-ghost btn-sm">🔍</button>
         </div>
-
         <div id="webResultsList"></div>
-
-        <div class="btn-row">
-          <button id="addWebBtn" class="btn btn-primary btn-sm btn-full" disabled>
-            Add selected (0)
-          </button>
-        </div>
-
-        <div style="margin-top:6px; font-size:11px; color:#475569; line-height:1.6;">
-          Mic: PCM 16 kHz mono · Agent: PCM 24 kHz mono<br>
-          VAD handles turn detection &amp; interrupt automatically
-        </div>
-
+        <button id="addWebBtn" class="btn btn-primary btn-sm btn-full" disabled style="margin-top:4px;">
+          Add selected (0)
+        </button>
       </div>
-    </aside>
 
-    <!-- Centre panel: Conversation ─────────────────────────────────────── -->
-    <main class="panel panel-main">
-      <div class="panel-header">Conversation</div>
-      <div id="messages"></div>
-    </main>
-
-    <!-- Right panel: Source cues ───────────────────────────────────────── -->
-    <aside class="panel panel-right">
-      <div class="panel-header">Source Cues</div>
-      <div class="panel-body">
-        <div id="sourceCues">
-          <div class="muted">Source evidence will appear here after each turn.</div>
+      <!-- Session Note -->
+      <div class="right-section">
+        <div class="right-section-header">
+          <span class="right-section-title">Session Note</span>
+          <div class="recap-actions">
+            <button id="generateRecapBtn" class="btn btn-ghost btn-sm">Generate</button>
+            <button id="downloadRecapBtn" class="btn btn-ghost btn-sm" disabled>⬇ .md</button>
+          </div>
+        </div>
+        <div id="recapPreview" class="recap-preview">
+          <span class="recap-placeholder">Generate a note to recap this session.</span>
         </div>
       </div>
-    </aside>
 
+    </aside>
   </div>
 
   <script src="/static/live.js"></script>
-
-  <!-- Keep mic label in sync with the mic indicator class -->
   <script>
-    const _micObs = new MutationObserver(() => {
-      const dot   = document.getElementById("micIndicator");
-      const label = document.getElementById("micLabel");
-      if (label) {
-        label.textContent = dot.classList.contains("mic-on")
-          ? "Microphone active (streaming)"
-          : "Microphone inactive";
-      }
-    });
-    _micObs.observe(document.getElementById("micIndicator"), { attributes: true });
+    // Sync mic label with indicator class
+    new MutationObserver(() => {
+      const dot = document.getElementById("micIndicator");
+      const lbl = document.getElementById("micLabel");
+      if (lbl) lbl.textContent = dot.classList.contains("mic-on") ? "Mic active" : "Mic off";
+    }).observe(document.getElementById("micIndicator"), { attributes: true });
   </script>
-
 </body>
 </html>

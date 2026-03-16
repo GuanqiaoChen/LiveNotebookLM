@@ -1,0 +1,29 @@
+[
+  {
+    "chunk_id": "5099081a-c905-4e38-860a-e2167082ae3d_chunk_0",
+    "session_id": "96ecbb7d-2a9e-4bf4-9ed1-65e0b500f5de",
+    "source_id": "5099081a-c905-4e38-860a-e2167082ae3d",
+    "source_name": "description.pdf",
+    "text": "Assignment 2: Store Sales Prediction\nPlease use the Store Sales dataset. You will use time-series forecasting to forecast store sales on data\nfrom Corporaci´ on Favorita, a large Ecuadorian-based grocery retailer.\nSpeciﬁcally, you’ll build a model that more accurately predicts the unit sales for thousands of items\nsold at diﬀerent Favorita stores. You’ll practice your machine learning skills with an approachable training\ndataset of dates, store, and item information, promotions, and unit sales.\n1 Data Exploration\n(a) Generate plots for sales data by store, by product type, and by store type. Please describe which type\nof stores, and which family of stores, have the highest and lowest sales\n(b) Create plots for daily, weekly, monthly, quarterly, and yearly sales and transaction volumes. What do\nyou observe? Do you think they are stationary?\n(c) Illustrate sales trends using a rolling mean (e.g. chossing 365 days to calculate the mean).\n(d) When time series exhibit patterns, they often display seasonality at various intervals, such as daily,\nweekly, monthly, or yearly. Analyze the data’s frequency by performing seasonal decomposition. De-\ncompose observed sales and transaction data i",
+    "page": 1,
+    "section": "page_1"
+  },
+  {
+    "chunk_id": "5099081a-c905-4e38-860a-e2167082ae3d_chunk_1",
+    "session_id": "96ecbb7d-2a9e-4bf4-9ed1-65e0b500f5de",
+    "source_id": "5099081a-c905-4e38-860a-e2167082ae3d",
+    "source_name": "description.pdf",
+    "text": "aily,\nweekly, monthly, or yearly. Analyze the data’s frequency by performing seasonal decomposition. De-\ncompose observed sales and transaction data into trend, seasonal, and residual components.\n(e) Examine the correlation between sales and transactions.\n(f) Display the autocorrelation function for the sales data.\n(g) Calculate and present the mean and standard deviation of sales.\n2 Linear Models\n(a) Apply the Augmented Dickey Fuller test to assess data stationarity.\n(b) Determine the p, d, q parameters for an ARIMA model based on the Autocorrelation Function (ACF)\nplot.\n(c) Forecast sales using the ARIMA model.\n3 ML models\n(a) Explore the use of lasso, ridge, regression trees, random forests, XGBoost for sales forecasting.\n(b) Use LSTM and GRU to predict sales.\n1",
+    "page": 1,
+    "section": "page_1"
+  },
+  {
+    "chunk_id": "5099081a-c905-4e38-860a-e2167082ae3d_chunk_0",
+    "session_id": "96ecbb7d-2a9e-4bf4-9ed1-65e0b500f5de",
+    "source_id": "5099081a-c905-4e38-860a-e2167082ae3d",
+    "source_name": "description.pdf",
+    "text": "(c) Use Transformer to predict sales.\n(d) (Bonus) Learn DeepAR by yourself and use it to predict store sales.\n(e) Compare the forecasted sales against actual sales (you choose the model).\n2",
+    "page": 2,
+    "section": "page_2"
+  }
+]

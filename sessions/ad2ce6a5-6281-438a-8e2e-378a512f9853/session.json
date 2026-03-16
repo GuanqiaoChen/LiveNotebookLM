@@ -1,0 +1,13 @@
+{
+  "session_id": "ad2ce6a5-6281-438a-8e2e-378a512f9853",
+  "title": "recap test",
+  "created_at": "2026-03-12T08:37:54.275803Z",
+  "updated_at": "2026-03-12T20:24:26.078944Z",
+  "source_ids": [
+    "a9f23f58-1b76-4ec8-bed9-3d2e6603c7b9"
+  ],
+  "source_count": 1,
+  "message_count": 5,
+  "is_active": true,
+  "ended_at": null
+}

@@ -1,0 +1,13 @@
+{
+  "session_id": "e00a01b8-4074-4268-a7ce-29ef8122e229",
+  "title": "Live session",
+  "created_at": "2026-03-16T19:36:31.936139Z",
+  "updated_at": "2026-03-16T19:39:17.537497Z",
+  "source_ids": [
+    "77f01c83-6e9a-44fe-afee-003861060038"
+  ],
+  "source_count": 1,
+  "message_count": 6,
+  "is_active": true,
+  "ended_at": null
+}

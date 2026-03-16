@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,9 +9,9 @@ from google import genai
 from google.adk.agents import Agent
 
 from app.config import get_settings
-from app.schemas import RecapData
+from app.schemas import FollowUpResponse, RecapData
 from app.live_notebook_agent.config import get_agent_settings
-from app.live_notebook_agent.prompts import RECAP_AGENT_INSTRUCTION
+from app.live_notebook_agent.prompts import FOLLOW_UP_AGENT_INSTRUCTION, RECAP_AGENT_INSTRUCTION
 
 
 agent_settings = get_agent_settings()
@@ -109,6 +110,55 @@ def load_recap_data(session_id: str) -> RecapData | None:
         return None
 
     return RecapData.model_validate(data)
+
+
+def generate_follow_up_suggestions(
+    session_id: str,
+    messages: list[dict],
+) -> FollowUpResponse:
+    """Generate exactly 3 follow-up question/topic suggestions from the conversation."""
+    client = genai.Client(
+        vertexai=True,
+        project=settings.google_cloud_project,
+        location=settings.google_cloud_location,
+    )
+
+    lines: list[str] = ["Conversation (most recent turns):"]
+    for msg in messages[-20:]:
+        role = msg.get("role", "unknown")
+        content = (msg.get("content") or "").strip()
+        if content and role in ("user", "assistant"):
+            lines.append(f"{role}: {content[:400]}")
+
+    lines.append("")
+    lines.append(
+        "Based on this conversation, generate exactly 3 specific follow-up questions "
+        "or topics the user could explore next. "
+        "Return ONLY a raw JSON array of exactly 3 strings. No markdown, no code fences."
+    )
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents="\n".join(lines),
+        config={"response_mime_type": "application/json"},
+    )
+
+    raw_text = re.sub(r"```(?:json)?\s*|\s*```", " ", (response.text or "")).strip()
+
+    try:
+        parsed = json.loads(raw_text)
+        suggestions = [str(s) for s in (parsed if isinstance(parsed, list) else [])][:3]
+    except (json.JSONDecodeError, ValueError):
+        suggestions = []
+
+    while len(suggestions) < 3:
+        suggestions.append("Explore this topic further")
+
+    return FollowUpResponse(
+        session_id=session_id,
+        suggestions=suggestions,
+        generated_at=datetime.now(timezone.utc),
+    )
 
 
 def _recap_path(session_id: str) -> Path:

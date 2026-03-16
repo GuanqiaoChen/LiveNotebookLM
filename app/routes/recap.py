@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from app.schemas import RecapData
+from app.schemas import FollowUpResponse, RecapData
 from app.session_store import SessionStore
 from app.source_store import SourceStore
 from app.live_notebook_agent.sub_agents.recap_manager import (
+    generate_follow_up_suggestions,
     generate_recap_data,
     load_recap_data,
     save_recap_data,
@@ -43,6 +44,28 @@ async def generate_recap(session_id: str) -> RecapData:
         raise HTTPException(
             status_code=500,
             detail=f"Recap generation failed: {type(exc).__name__}: {exc}",
+        ) from exc
+
+
+@router.post("/follow-up", response_model=FollowUpResponse)
+async def get_follow_up_suggestions(session_id: str) -> FollowUpResponse:
+    session_store = SessionStore()
+
+    try:
+        session_store.get_session_metadata(session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    messages = [msg.model_dump(mode="json") for msg in session_store.get_messages(session_id)]
+    if not messages:
+        return FollowUpResponse(session_id=session_id, suggestions=[])
+
+    try:
+        return generate_follow_up_suggestions(session_id=session_id, messages=messages)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Follow-up generation failed: {type(exc).__name__}: {exc}",
         ) from exc
 
 
