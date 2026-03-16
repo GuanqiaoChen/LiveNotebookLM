@@ -9,10 +9,19 @@ from app.session_store import SessionStore
 
 
 class MemoryManager:
+    """
+    Maintains per-session rolling memory from conversation history.
+
+    Stores recent messages, a rolling summary of older turns, open questions,
+    and key topics — all written to sessions/{id}/memory.json.
+    """
+
     def __init__(self) -> None:
         settings = get_settings()
         self.base_dir = Path(settings.sessions_dir).resolve()
         self.session_store = SessionStore()
+
+    # ── Public API ───────────────────────────────────────────────────────────
 
     def get_memory(self, session_id: str) -> dict:
         path = self._memory_path(session_id)
@@ -59,6 +68,8 @@ class MemoryManager:
             "open_questions": memory.get("open_questions", []),
             "key_topics": memory.get("key_topics", []),
         }
+
+    # ── Private helpers ──────────────────────────────────────────────────────
 
     def _build_summary(self, messages: list[MessageRecord]) -> str:
         if not messages:

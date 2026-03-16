@@ -10,10 +10,21 @@ from app.schemas import MessageRecord, SessionDetail, SessionMetadata
 
 
 class SessionStore:
+    """
+    Filesystem-backed store for session metadata and conversation messages.
+
+    Each session lives under sessions/{session_id}/ and contains:
+    - session.json  — SessionMetadata
+    - messages.json — list of MessageRecord
+    - recap.json    — optional recap payload
+    """
+
     def __init__(self) -> None:
         settings = get_settings()
         self.base_dir = Path(settings.sessions_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Private path helpers ─────────────────────────────────────────────────
 
     def _session_dir(self, session_id: str) -> Path:
         return self.base_dir / session_id
@@ -26,6 +37,8 @@ class SessionStore:
 
     def _recap_path(self, session_id: str) -> Path:
         return self._session_dir(session_id) / "recap.json"
+
+    # ── Session CRUD ─────────────────────────────────────────────────────────
 
     def create_session(self, title: str | None = None) -> SessionMetadata:
         session_id = str(uuid.uuid4())
@@ -78,6 +91,8 @@ class SessionStore:
             self._metadata_path(metadata.session_id),
             metadata.model_dump(mode="json"),
         )
+
+    # ── Messages ─────────────────────────────────────────────────────────────
 
     def get_messages(self, session_id: str) -> list[MessageRecord]:
         path = self._messages_path(session_id)
@@ -134,10 +149,7 @@ class SessionStore:
         session_dir.rmdir()
 
     def export_backup_payload(self, session_id: str) -> dict:
-        """
-        GCS backup data
-        Text-based session artifacts
-        """
+        """Return session metadata, messages, and recap as a serialisable dict."""
         metadata = self.get_session_metadata(session_id)
         messages = self.get_messages(session_id)
 
@@ -151,6 +163,8 @@ class SessionStore:
             "messages": [m.model_dump(mode="json") for m in messages],
             "recap": recap,
         }
+
+    # ── I/O utilities ────────────────────────────────────────────────────────
 
     @staticmethod
     def _write_json(path: Path, data: object) -> None:

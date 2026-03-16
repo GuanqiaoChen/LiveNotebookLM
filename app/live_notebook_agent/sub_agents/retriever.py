@@ -10,6 +10,12 @@ from app.source_processor import SourceProcessor
 
 
 class Retriever:
+    """
+    Vector-search retriever backed by Pinecone.
+
+    Falls back to local keyword search when Pinecone is not configured.
+    """
+
     def __init__(self) -> None:
         self.settings = get_settings()
         self.source_processor = SourceProcessor()
@@ -21,6 +27,8 @@ class Retriever:
         if self.settings.pinecone_api_key and self.settings.pinecone_index_name:
             self.pc = Pinecone(api_key=self.settings.pinecone_api_key)
             self.index = self.pc.Index(self.settings.pinecone_index_name)
+
+    # ── Public API ───────────────────────────────────────────────────────────
 
     def namespace_for_session(self, session_id: str) -> str:
         return f"{self.settings.pinecone_namespace_prefix}:{session_id}"

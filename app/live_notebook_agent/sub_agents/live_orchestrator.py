@@ -27,6 +27,8 @@ class LiveOrchestrator:
         self.memory_manager = MemoryManager()
         self.retriever = Retriever()
 
+    # ── Public API ───────────────────────────────────────────────────────────
+
     def record_user_message(
         self,
         session_id: str,
@@ -130,6 +132,8 @@ class LiveOrchestrator:
     def get_session_sources(self, session_id: str) -> list[dict]:
         sources = self.source_store.list_sources(session_id)
         return [src.model_dump(mode="json") for src in sources]
+
+    # ── Private helpers ──────────────────────────────────────────────────────
 
     def _build_grounded_prompt(
         self,

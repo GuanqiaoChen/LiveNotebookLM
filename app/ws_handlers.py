@@ -381,9 +381,9 @@ async def _forward_runtime_events(
                 orchestrator.record_assistant_message(session_id, assistant_text)
 
             # Trigger RAG: forward evidence to the frontend citations panel.
-            # NOTE: do NOT inject grounded_prompt back into Gemini via
-            # send_turn_context() — that races with the user's next live-audio
-            # turn and causes Gemini to drop their speech (interrupt instability).
+            # Do NOT inject grounded_prompt back into Gemini via send_turn_context()
+            # — that races with the user's next live-audio turn and causes Gemini
+            # to drop their speech, breaking interrupt stability.
             if user_text:
                 try:
                     grounded = orchestrator.prepare_grounded_turn(

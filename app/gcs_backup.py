@@ -39,6 +39,8 @@ _SESSION_FILES = [
 
 
 class GCSBackupService:
+    """Upload and restore session metadata files to/from Google Cloud Storage."""
+
     def __init__(self) -> None:
         settings = get_settings()
         self.bucket_name = settings.gcs_bucket

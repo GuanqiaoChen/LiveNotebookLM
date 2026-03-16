@@ -191,7 +191,7 @@ class LiveRuntime:
                                     {"type": "user_transcript", "text": text}
                                 )
 
-                        # ── Output transcription (model speech → text) ─────────
+                        # ── Output transcription (model speech → text) ──────────
                         # Must be enqueued BEFORE turn_complete so the frontend
                         # receives the final transcript before it finalises the bubble.
                         output_tx = getattr(server_content, "output_transcription", None)
