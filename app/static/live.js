@@ -229,6 +229,16 @@ function renderSessionList(sessions) {
   }
 }
 
+// Switch the mobile tab bar to the given panel (no-op on desktop).
+function switchMobileTab(tab, btn) {
+  const layout = document.getElementById("appLayout");
+  if (!layout) return;
+  layout.dataset.tab = tab;
+  document.querySelectorAll(".mobile-tab").forEach(b => b.classList.remove("active"));
+  const target = btn || document.querySelector(`.mobile-tab[data-panel="${tab}"]`);
+  if (target) target.classList.add("active");
+}
+
 async function selectSession(sessionId, title) {
   if (state.conversationActive) {
     if (!confirm("End the current conversation and switch sessions?")) return;
@@ -238,13 +248,22 @@ async function selectSession(sessionId, title) {
   state.sessionId = sessionId;
   state.titleSet = true; // don't auto-title existing sessions
 
+  // On mobile, jump to Chat panel so the user sees the conversation immediately.
+  switchMobileTab("chat", null);
+
   // Highlight active session
   document.querySelectorAll(".session-item").forEach(el => {
     el.classList.toggle("active", el.dataset.sessionId === sessionId);
   });
 
-  // Reset conversation area
+  // Clear ALL per-session UI immediately and synchronously before any async
+  // work begins — this is the authoritative reset point so stale data from the
+  // previous session can never bleed through regardless of network timing.
   els.messages.innerHTML = "";
+  state.recapData = null;
+  renderRecapPreview(null);
+  renderSources([]);
+
   setStatus(`Session: ${title || sessionId.slice(0, 8)}`);
   updateButtons();
 

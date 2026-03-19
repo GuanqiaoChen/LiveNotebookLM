@@ -621,10 +621,111 @@
     }
     .upload-label:hover { background: #e5e7eb; border-color: #bfc5ce; }
 
-    /* ── Responsive ──────────────────────────────────────────────────────── */
-    @media (max-width: 900px) {
-      .layout { grid-template-columns: 1fr; }
-      .sidebar, .right-panel { display: none; }
+    /* ── Mobile tab bar (hidden on desktop) ─────────────────────────────── */
+    .mobile-tabs {
+      display: none;
+      height: 56px;
+      background: #fff;
+      border-top: 1px solid #dde1e9;
+      flex-shrink: 0;
+      box-shadow: 0 -1px 3px rgba(0,0,0,0.06);
+    }
+    .mobile-tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      border: none;
+      background: none;
+      font-size: 10px;
+      font-weight: 600;
+      color: #9ca3af;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      padding: 6px 0 8px;
+      letter-spacing: 0.3px;
+      transition: color 0.15s;
+    }
+    .mobile-tab.active { color: #2563eb; }
+    .mobile-tab svg { width: 20px; height: 20px; stroke-width: 1.75; }
+
+    /* ── Tablet (768 – 1023px): hide right panel, narrow sidebar ─────────── */
+    @media (max-width: 1023px) {
+      .layout { grid-template-columns: 210px 1fr; }
+      .right-panel { display: none; }
+    }
+
+    /* ── Mobile (≤ 767px): single-panel tabbed view ──────────────────────── */
+    @media (max-width: 767px) {
+      body { height: 100svh; }
+
+      .header { padding: 0 14px; height: 48px; gap: 8px; }
+      .header h1 { font-size: 15px; }
+      .header-badge { font-size: 10px; padding: 2px 7px; }
+
+      /* Layout becomes a stacking container — panels overlay each other */
+      .layout {
+        display: block;
+        position: relative;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      /* Every panel fills the full container area */
+      .sidebar, .main, .right-panel {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border: none !important;
+        box-shadow: none !important;
+      }
+
+      /* Default: show Chat */
+      .sidebar      { display: none; }
+      .main         { display: flex; overflow: hidden; }
+      .right-panel  { display: none; }
+
+      /* Sessions tab */
+      .layout[data-tab="sessions"] .sidebar     { display: flex; overflow-y: auto; }
+      .layout[data-tab="sessions"] .main        { display: none; }
+      .layout[data-tab="sessions"] .right-panel { display: none; }
+
+      /* Chat tab (default) */
+      .layout[data-tab="chat"] .main        { display: flex; }
+      .layout[data-tab="chat"] .sidebar     { display: none; }
+      .layout[data-tab="chat"] .right-panel { display: none; }
+
+      /* Tools tab */
+      .layout[data-tab="tools"] .right-panel { display: flex; flex-direction: column; overflow-y: auto; }
+      .layout[data-tab="tools"] .sidebar     { display: none; }
+      .layout[data-tab="tools"] .main        { display: none; }
+
+      #messages { padding: 16px 12px 12px; }
+      .msg { max-width: 88%; }
+
+      .conv-bar { padding: 10px 12px; gap: 8px; }
+      .conv-bar-left { flex: 1; min-width: 0; }
+      #statusBox { font-size: 12px; max-width: 150px; }
+      #beginConvBtn, #endConvBtn { padding: 11px 18px; min-height: 44px; }
+
+      .right-section { padding: 14px 14px 10px; }
+
+      /* Prevent iOS from zooming into focused inputs */
+      input[type="text"] { font-size: 16px; }
+
+      .citations-section { max-height: 200px; min-height: 80px; }
+
+      .mobile-tabs { display: flex; }
+    }
+
+    /* ── Very small screens (≤ 360px) ────────────────────────────────────── */
+    @media (max-width: 360px) {
+      .conv-bar { flex-wrap: wrap; }
+      .conv-bar-right { width: 100%; justify-content: flex-end; }
+      #statusBox { max-width: 100%; white-space: normal; }
     }
   </style>
 </head>
@@ -640,7 +741,7 @@
   </header>
 
   <!-- Layout -->
-  <div class="layout">
+  <div class="layout" id="appLayout" data-tab="chat">
 
     <!-- ── Left sidebar: sessions + citations ──────────────────────────── -->
     <aside class="sidebar">
@@ -744,6 +845,29 @@
     </aside>
   </div>
 
+  <!-- Mobile bottom navigation (visible only on ≤767px) -->
+  <nav class="mobile-tabs" id="mobileTabs" aria-label="App navigation">
+    <button class="mobile-tab" data-panel="sessions" onclick="switchMobileTab('sessions',this)" aria-label="Sessions">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+        <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+      </svg>
+      Sessions
+    </button>
+    <button class="mobile-tab active" data-panel="chat" onclick="switchMobileTab('chat',this)" aria-label="Chat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      Chat
+    </button>
+    <button class="mobile-tab" data-panel="tools" onclick="switchMobileTab('tools',this)" aria-label="Tools">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      Tools
+    </button>
+  </nav>
+
   <script src="/static/live.js"></script>
   <script>
     // Sync mic label with indicator class
@@ -752,6 +876,13 @@
       const lbl = document.getElementById("micLabel");
       if (lbl) lbl.textContent = dot.classList.contains("mic-on") ? "Mic active" : "Mic off";
     }).observe(document.getElementById("micIndicator"), { attributes: true });
+
+    // Mobile tab switching
+    function switchMobileTab(tab, btn) {
+      document.getElementById("appLayout").dataset.tab = tab;
+      document.querySelectorAll(".mobile-tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    }
   </script>
 </body>
 </html>
