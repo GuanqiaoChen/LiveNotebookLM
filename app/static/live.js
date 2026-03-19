@@ -614,13 +614,18 @@ async function generateRecap() {
 
 async function tryLoadExistingRecap() {
   if (!state.sessionId) return;
-  // Always clear the previous session's recap immediately — never let stale
-  // content from another session bleed through while the fetch is in flight.
+  // Capture the session we're loading for. If the user switches sessions while
+  // the fetch is in flight we must not apply a stale result to the new session.
+  const targetId = state.sessionId;
   state.recapData = null;
   renderRecapPreview(null);
   try {
-    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/recap`);
-    if (res.ok) { const r = await res.json(); state.recapData = r; renderRecapPreview(r); }
+    const res = await apiFetch(`${API_BASE}/sessions/${targetId}/recap`);
+    if (res.ok && state.sessionId === targetId) {
+      const r = await res.json();
+      state.recapData = r;
+      renderRecapPreview(r);
+    }
   } catch (_) {}
 }
 
