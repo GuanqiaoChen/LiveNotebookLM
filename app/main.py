@@ -11,7 +11,7 @@ from app.routes import sessions_router, sources_router, recap_router, backup_rou
 from app.live_notebook_agent.agent import AGENT_REGISTRY
 from app.ws_handlers import handle_live_websocket
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
@@ -47,6 +47,15 @@ app = FastAPI(
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+
+# Cache-bust key derived from live.js mtime so a new deploy always forces
+# browsers to fetch the latest script, even if they have a stale cached copy.
+try:
+    _DEPLOY_ID = str(int((STATIC_DIR / "live.js").stat().st_mtime))
+except OSError:
+    import time as _time
+    _DEPLOY_ID = str(int(_time.time()))
+
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -186,7 +195,17 @@ async def ws_ping(websocket: WebSocket):
 
 @app.get("/ui")
 async def ui():
-    return FileResponse(STATIC_DIR / "index.html")
+    # Inject deploy ID into the script tag so the browser always fetches the
+    # latest live.js regardless of what it has cached from previous deploys.
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = html.replace(
+        'src="/static/live.js"',
+        f'src="/static/live.js?v={_DEPLOY_ID}"',
+    )
+    return HTMLResponse(
+        html,
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 @app.get("/restore")

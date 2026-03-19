@@ -755,21 +755,31 @@ function renderRecapPreview(recap) {
 
 async function generateRecap() {
   if (!state.sessionId) return;
+  // Capture session before async work so we can guard against race conditions
+  // where the user switches sessions while generation is in flight.
+  const targetId = state.sessionId;
   els.generateRecapBtn.disabled = true;
   els.generateRecapBtn.textContent = "…";
   els.recapPreview.innerHTML = '<span class="recap-placeholder">Generating…</span>';
 
   try {
-    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/recap/generate`, { method: "POST" });
+    const res = await apiFetch(`${API_BASE}/sessions/${targetId}/recap/generate`, { method: "POST" });
     if (!res.ok) { const e = await res.json().catch(() => ({})); els.recapPreview.innerHTML = `<span class="recap-placeholder" style="color:#dc2626">${e.detail || "Failed"}</span>`; return; }
     const recap = await res.json();
-    state.recapData = recap;
-    renderRecapPreview(recap);
+    // Only apply if the user hasn't switched to a different session
+    if (state.sessionId === targetId) {
+      state.recapData = recap;
+      renderRecapPreview(recap);
+    }
   } catch (e) {
-    els.recapPreview.innerHTML = `<span class="recap-placeholder" style="color:#dc2626">${e}</span>`;
+    if (state.sessionId === targetId) {
+      els.recapPreview.innerHTML = `<span class="recap-placeholder" style="color:#dc2626">${e}</span>`;
+    }
   } finally {
-    els.generateRecapBtn.disabled = false;
-    els.generateRecapBtn.textContent = "Generate";
+    if (state.sessionId === targetId) {
+      els.generateRecapBtn.disabled = false;
+      els.generateRecapBtn.textContent = "Generate";
+    }
   }
 }
 
