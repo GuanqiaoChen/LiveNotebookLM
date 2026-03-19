@@ -147,7 +147,7 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str, client_id
         if orchestrator is None:
             # Run in a thread pool to avoid blocking the event loop with
             # Pinecone's synchronous gRPC initialisation (cold-start can be >10 s).
-            orchestrator = await asyncio.to_thread(LiveOrchestrator)
+            orchestrator = await asyncio.to_thread(LiveOrchestrator, client_id)
 
         runtime_closed_event = asyncio.Event()
         turn_state["user_transcript"] = ""
@@ -179,6 +179,7 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str, client_id
                 runtime_closed_event=runtime_closed_event,
                 session_id=session_id,
                 orchestrator=orchestrator,
+                client_id=client_id,
             )
         )
 
@@ -340,6 +341,7 @@ async def _forward_runtime_events(
     runtime_closed_event: asyncio.Event,
     session_id: str,
     orchestrator: LiveOrchestrator,
+    client_id: str = "default",
 ) -> None:
     """
     Consume events from LiveRuntime, update per-turn state, persist completed
@@ -396,26 +398,34 @@ async def _forward_runtime_events(
             if assistant_text:
                 orchestrator.record_assistant_message(session_id, assistant_text)
 
-            # Trigger RAG: forward evidence to the frontend citations panel.
-            # Do NOT inject grounded_prompt back into Gemini via send_turn_context()
-            # — that races with the user's next live-audio turn and causes Gemini
-            # to drop their speech, breaking interrupt stability.
-            if user_text:
-                try:
-                    grounded = orchestrator.prepare_grounded_turn(
-                        session_id=session_id, user_text=user_text
-                    )
-                    if grounded.get("evidence"):
-                        await websocket.send_json(
-                            {"type": "source_cues", "evidence": grounded["evidence"]}
-                        )
-                except Exception:
-                    pass
-
+            # Forward turn_complete FIRST, then do RAG in background so the
+            # frontend can stop the trumpet immediately without waiting for
+            # the Pinecone call (which can take 200–800 ms on first turn).
             turn_state["user_transcript"] = ""
             turn_state["assistant_transcript"] = ""
             turn_state["assistant_parts"].clear()
-            schedule_backup(session_id)  # persist completed turn to GCS
+            schedule_backup(session_id, client_id)  # persist completed turn to GCS
+
+            # Trigger RAG in a fire-and-forget background task so it does NOT
+            # block forwarding turn_complete to the frontend.
+            if user_text:
+                _captured_user_text = user_text
+
+                async def _send_source_cues(ut: str = _captured_user_text) -> None:
+                    try:
+                        grounded = await asyncio.to_thread(
+                            orchestrator.prepare_grounded_turn,
+                            session_id=session_id,
+                            user_text=ut,
+                        )
+                        if grounded.get("evidence"):
+                            await websocket.send_json(
+                                {"type": "source_cues", "evidence": grounded["evidence"]}
+                            )
+                    except Exception:
+                        pass
+
+                asyncio.create_task(_send_source_cues())
 
         if event_type in {"runtime_error", "runtime_closed"}:
             runtime_closed_event.set()

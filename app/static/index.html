@@ -986,12 +986,7 @@
       if (lbl) lbl.textContent = dot.classList.contains("mic-on") ? "Mic active" : "Mic off";
     }).observe(document.getElementById("micIndicator"), { attributes: true });
 
-    // Mobile tab switching
-    function switchMobileTab(tab, btn) {
-      document.getElementById("appLayout").dataset.tab = tab;
-      document.querySelectorAll(".mobile-tab").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-    }
+    // Mobile tab switching — delegates to live.js which handles null btn
   </script>
 </body>
 </html>

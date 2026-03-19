@@ -27,12 +27,18 @@ async def lifespan(_app: FastAPI):
     # This ensures data survives container restarts (Cloud Run, etc.).
     # Restore all users' sessions from GCS (client_id-namespaced).
     from app.gcs_backup import GCSBackupService
+    import asyncio as _asyncio
     try:
-        result = await GCSBackupService().restore_all_users(overwrite=False)
+        result = await _asyncio.wait_for(
+            GCSBackupService().restore_all_users(overwrite=False),
+            timeout=30,
+        )
         logger.info(
             "GCS startup restore — restored: %d, skipped: %d, total: %d",
             result["restored"], result["skipped"], result["total"],
         )
+    except _asyncio.TimeoutError:
+        logger.warning("GCS startup restore timed out after 30 s (non-fatal) — continuing")
     except Exception as exc:
         logger.warning("GCS startup restore skipped (non-fatal): %s", exc)
     yield  # app runs here

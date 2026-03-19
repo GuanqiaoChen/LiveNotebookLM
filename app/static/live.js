@@ -57,8 +57,10 @@ const state = {
   mediaSourceNode: null,
   workletNode: null,
   processorNode: null,
-  _lastSpeechAt: 0,     // timestamp of last audio chunk above energy threshold
-  _lastKeepaliveAt: 0,  // timestamp of last keepalive audio chunk sent during silence
+  _lastSpeechAt: 0,        // timestamp of last audio chunk above energy threshold
+  _lastKeepaliveAt: 0,     // timestamp of last keepalive audio chunk sent during silence
+  _interruptSpeechStart: 0, // timestamp when sustained speech above interrupt threshold began
+  _locallyInterrupted: false, // true after local interrupt fires; cleared on server ack
 
   // Live transcript bubbles
   liveUserBubble: null,
@@ -324,6 +326,11 @@ function showVoiceModal() {
     _voiceModalResolve = resolve;
 
     const grid = document.getElementById("voiceGrid");
+    const modal = document.getElementById("voiceModal");
+    if (!grid || !modal) {
+      resolve("Aoede");
+      return;
+    }
     grid.innerHTML = "";
 
     const voices = Object.keys(VOICE_DESCRIPTIONS);
@@ -358,7 +365,7 @@ function showVoiceModal() {
       _playVoicePreview(btn.dataset.voice, btn);
     });
 
-    document.getElementById("voiceModal").classList.remove("hidden");
+    modal.classList.remove("hidden");
   });
 }
 
@@ -431,19 +438,30 @@ function _closeVoiceModal(voice) {
   }
 }
 
-document.getElementById("voiceConfirmBtn").addEventListener("click", () => {
-  const checked = document.querySelector("#voiceGrid input[type=radio]:checked");
-  _closeVoiceModal(checked ? checked.value : "Aoede");
-});
+// Guard against null in case the HTML is served from a stale cache that
+// doesn't yet contain the modal markup — prevents a TypeError that would
+// otherwise block all subsequent event-listener registration in this file.
+const _voiceConfirmBtn  = document.getElementById("voiceConfirmBtn");
+const _voiceCancelBtn   = document.getElementById("voiceCancelBtn");
+const _voiceModalEl     = document.getElementById("voiceModal");
 
-document.getElementById("voiceCancelBtn").addEventListener("click", () => {
-  _closeVoiceModal(null);
-});
+if (_voiceConfirmBtn) {
+  _voiceConfirmBtn.addEventListener("click", () => {
+    const checked = document.querySelector("#voiceGrid input[type=radio]:checked");
+    _closeVoiceModal(checked ? checked.value : "Aoede");
+  });
+}
 
-// Close on overlay click (outside card)
-document.getElementById("voiceModal").addEventListener("click", (e) => {
-  if (e.target === document.getElementById("voiceModal")) _closeVoiceModal(null);
-});
+if (_voiceCancelBtn) {
+  _voiceCancelBtn.addEventListener("click", () => _closeVoiceModal(null));
+}
+
+if (_voiceModalEl) {
+  // Close on overlay click (outside card)
+  _voiceModalEl.addEventListener("click", (e) => {
+    if (e.target === _voiceModalEl) _closeVoiceModal(null);
+  });
+}
 
 // ── Source management ────────────────────────────────────────────────────────
 
@@ -951,9 +969,17 @@ function stopAssistantAudio() {
 
 // Energy gate: reduce silent chunks to prevent 1007, but still send keepalive
 // audio every KEEPALIVE_MS to prevent 1006 (abnormal closure from inactivity).
-const ENERGY_THRESHOLD = 0.001;
-const SPEECH_TAIL_MS   = 1500;
-const KEEPALIVE_MS     = 3000; // max silence gap before sending a keepalive chunk
+const ENERGY_THRESHOLD        = 0.001;
+const SPEECH_TAIL_MS          = 1500;
+const KEEPALIVE_MS            = 3000;  // max silence gap before sending a keepalive chunk
+const INTERRUPT_RMS_THRESHOLD = 0.015; // higher threshold for deliberate interrupt detection
+const INTERRUPT_SUSTAIN_MS    = 50;    // ms of sustained speech above threshold to fire locally
+
+function _makeSilentPcm(f32, sr) {
+  return new Uint8Array(floatTo16BitPCM(new Float32Array(
+    Math.round(f32.length * USER_PCM_RATE / sr)
+  )));
+}
 
 function _sendAudioChunk(f32, sr) {
   if (!state.conversationActive || !state.runtimeReady) return;
@@ -965,14 +991,50 @@ function _sendAudioChunk(f32, sr) {
   const rms = Math.sqrt(sumSq / f32.length);
 
   const now = Date.now();
+
+  // ── Agent is speaking: local interrupt detection with silent keepalive ──────
+  // While the agent plays audio we suppress all real mic audio to prevent
+  // ambient noise from triggering Gemini's VAD (START_SENSITIVITY_HIGH is very
+  // sensitive).  We only send real audio once the user sustains speech above a
+  // higher threshold for INTERRUPT_SUSTAIN_MS — at which point we also stop
+  // the local audio immediately so the agent goes quiet without waiting for
+  // the server round-trip.
+  if (state.activeAudioNodes.length > 0 && !state._locallyInterrupted) {
+    if (rms >= INTERRUPT_RMS_THRESHOLD) {
+      if (state._interruptSpeechStart === 0) state._interruptSpeechStart = now;
+
+      if (now - state._interruptSpeechStart >= INTERRUPT_SUSTAIN_MS) {
+        // Sustained speech confirmed → immediate local interrupt
+        state._locallyInterrupted = true;
+        state._interruptSpeechStart = 0;
+        stopAssistantAudio();
+        // Fall through to send real audio and trigger Gemini VAD
+      } else {
+        // Not yet sustained — keep sending silent audio
+        if (now - state._lastKeepaliveAt >= KEEPALIVE_MS) {
+          state._lastKeepaliveAt = now;
+          wsSend({ type: "audio_chunk", mime_type: "audio/pcm;rate=16000", data: uint8ArrayToBase64(_makeSilentPcm(f32, sr)) });
+        }
+        return;
+      }
+    } else {
+      // Low-energy audio during agent speech — send silent keepalive only
+      state._interruptSpeechStart = 0;
+      if (now - state._lastKeepaliveAt >= KEEPALIVE_MS) {
+        state._lastKeepaliveAt = now;
+        wsSend({ type: "audio_chunk", mime_type: "audio/pcm;rate=16000", data: uint8ArrayToBase64(_makeSilentPcm(f32, sr)) });
+      }
+      return;
+    }
+  }
+
+  // ── Normal speech gating (agent silent or interrupt already fired) ───────────
   if (rms >= ENERGY_THRESHOLD) {
-    // Active speech — send immediately and reset both timers
+    // Active speech — send immediately and reset timers
     state._lastSpeechAt = now;
     state._lastKeepaliveAt = now;
   } else if (now - state._lastSpeechAt > SPEECH_TAIL_MS) {
     // Silence period: only send a keepalive chunk every KEEPALIVE_MS.
-    // This prevents Gemini from closing the session (1006) due to inactivity
-    // while still avoiding 1007 from too much dense silence.
     if (now - state._lastKeepaliveAt < KEEPALIVE_MS) {
       return; // skip — next keepalive not due yet
     }
@@ -1122,6 +1184,9 @@ function handleServerEvent(payload) {
 
     case "assistant_interrupted":
       stopAssistantAudio();
+      // Clear local interrupt flags — server has confirmed the interruption
+      state._locallyInterrupted = false;
+      state._interruptSpeechStart = 0;
       if (state.liveAssistantBubble) {
         finaliseBubble(state.liveAssistantBubble, state.currentAssistantText.trim() ? `${state.currentAssistantText.trim()} ✂` : null);
         state.liveAssistantBubble = null;
@@ -1139,6 +1204,10 @@ function handleServerEvent(payload) {
 
     case "turn_complete": {
       const userText = state.currentUserText;
+
+      // Clear local interrupt flags — turn is fully complete
+      state._locallyInterrupted = false;
+      state._interruptSpeechStart = 0;
 
       // Finalise assistant bubble immediately
       finaliseBubble(state.liveAssistantBubble, state.currentAssistantText || "(audio response)");

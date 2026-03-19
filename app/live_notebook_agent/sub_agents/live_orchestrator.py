@@ -21,10 +21,10 @@ class LiveOrchestrator:
     - build grounded context for the live runtime / response layer
     """
 
-    def __init__(self) -> None:
-        self.session_store = SessionStore()
-        self.source_store = SourceStore()
-        self.memory_manager = MemoryManager()
+    def __init__(self, client_id: str = "default") -> None:
+        self.session_store = SessionStore(client_id=client_id)
+        self.source_store = SourceStore(client_id=client_id)
+        self.memory_manager = MemoryManager(client_id=client_id)
         self.retriever = Retriever()
 
     # ── Public API ───────────────────────────────────────────────────────────

@@ -45,22 +45,37 @@ class LiveRuntime:
             "response_modalities": ["AUDIO"],
             "input_audio_transcription": {},
             "output_audio_transcription": {},
-            # Explicitly enable server-side VAD so the model interrupts itself
-            # when user speech is detected mid-response.
+            # Server-side VAD: interrupt immediately on speech onset, with high
+            # sensitivity so the model stops within one speech frame (~100 ms).
             "realtime_input_config": {
-                "automatic_activity_detection": {},
+                "automatic_activity_detection": {
+                    "start_of_speech_sensitivity": "START_SENSITIVITY_HIGH",
+                    "end_of_speech_sensitivity": "END_SENSITIVITY_HIGH",
+                    "silence_duration_ms": 400,
+                },
+                "activity_handling": "START_OF_ACTIVITY_INTERRUPTS",
             },
         }
         if system_instruction:
             config["system_instruction"] = system_instruction
         if voice:
-            config["speech_config"] = {
-                "voice_config": {
-                    "prebuilt_voice_config": {
-                        "voice_name": voice,
+            # Use proper SDK types so the config is correctly serialised.
+            # Fall back to a plain dict if the types aren't available in this
+            # SDK version — the Live API also accepts the dict form.
+            try:
+                config["speech_config"] = types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=voice
+                        )
+                    )
+                )
+            except AttributeError:
+                config["speech_config"] = {
+                    "voice_config": {
+                        "prebuilt_voice_config": {"voice_name": voice}
                     }
                 }
-            }
 
         self._session_cm = self.client.aio.live.connect(
             model=self.settings.live_notebook_agent_model,

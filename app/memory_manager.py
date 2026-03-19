@@ -16,10 +16,10 @@ class MemoryManager:
     and key topics — all written to sessions/{id}/memory.json.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, client_id: str = "default") -> None:
         settings = get_settings()
-        self.base_dir = Path(settings.sessions_dir).resolve()
-        self.session_store = SessionStore()
+        self.base_dir = (Path(settings.sessions_dir) / client_id).resolve()
+        self.session_store = SessionStore(client_id=client_id)
 
     # ── Public API ───────────────────────────────────────────────────────────
 
