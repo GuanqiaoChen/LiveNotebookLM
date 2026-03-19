@@ -12,9 +12,10 @@ from app.schemas import SourceMetadata
 
 
 class SourceProcessor:
-    def __init__(self) -> None:
+    def __init__(self, client_id: str = "default") -> None:
         settings = get_settings()
-        self.base_dir = Path(settings.sessions_dir).resolve()
+        # Namespace under client_id to match SessionStore / SourceStore paths.
+        self.base_dir = (Path(settings.sessions_dir) / client_id).resolve()
 
     def save_uploaded_file_locally(
         self,

@@ -40,7 +40,7 @@ async def upload_source(
 ) -> SourceMetadata:
     session_store = SessionStore(client_id=client_id)
     source_store = SourceStore(client_id=client_id)
-    source_processor = SourceProcessor()
+    source_processor = SourceProcessor(client_id=client_id)
     retriever = Retriever()
     settings = get_settings()
 
@@ -214,7 +214,7 @@ async def add_web_sources(
     """
     session_store = SessionStore(client_id=client_id)
     source_store = SourceStore(client_id=client_id)
-    source_processor = SourceProcessor()
+    source_processor = SourceProcessor(client_id=client_id)
     retriever = Retriever()
 
     try:
