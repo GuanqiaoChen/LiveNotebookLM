@@ -292,16 +292,158 @@ async function loadSessionMessages(sessionId) {
   } catch (_) {}
 }
 
-async function createSession(title) {
+async function createSession(title, voice) {
   const res = await apiFetch(`${API_BASE}/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title: title || "New conversation" }),
+    body: JSON.stringify({ title: title || "New conversation", voice: voice || "Aoede" }),
   });
   if (!res.ok) throw new Error(`Failed to create session: ${res.status}`);
   const data = await res.json();
   return data;
 }
+
+// ── Voice selection modal ────────────────────────────────────────────────────
+
+const VOICE_DESCRIPTIONS = {
+  Aoede:  "Warm and expressive. Natural, friendly tone. Great for long conversations.",
+  Charon: "Deep and measured. Calm authority. Ideal for detailed analysis.",
+  Fenrir: "Bold and energetic. Dynamic delivery. Best for engaging explanations.",
+  Kore:   "Clear and precise. Professional tone. Perfect for structured summaries.",
+  Puck:   "Light and playful. Upbeat and accessible. Great for casual exploration.",
+  Orbit:  "Smooth and confident. Balanced presence. Works well for any topic.",
+  Zephyr: "Gentle and soothing. Relaxed delivery. Excellent for nuanced discussion.",
+};
+
+let _voiceModalResolve = null;
+let _previewAudioCtx = null;
+let _previewSource = null;
+
+function showVoiceModal() {
+  return new Promise((resolve) => {
+    _voiceModalResolve = resolve;
+
+    const grid = document.getElementById("voiceGrid");
+    grid.innerHTML = "";
+
+    const voices = Object.keys(VOICE_DESCRIPTIONS);
+    voices.forEach((name, i) => {
+      const card = document.createElement("label");
+      card.className = "voice-card" + (i === 0 ? " selected" : "");
+      card.dataset.voice = name;
+      card.innerHTML = `
+        <input type="radio" name="voiceChoice" value="${name}"${i === 0 ? " checked" : ""}>
+        <div class="voice-card-body">
+          <div class="voice-card-name">${name}</div>
+          <div class="voice-card-desc">${VOICE_DESCRIPTIONS[name]}</div>
+        </div>
+        <button type="button" class="voice-preview-btn" data-voice="${name}" title="Preview ${name}">
+          ▶ Preview
+        </button>
+      `;
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".voice-preview-btn")) return; // handled separately
+        grid.querySelectorAll(".voice-card").forEach(c => c.classList.remove("selected"));
+        card.classList.add("selected");
+        card.querySelector("input").checked = true;
+      });
+      grid.appendChild(card);
+    });
+
+    // Preview button clicks
+    grid.addEventListener("click", (e) => {
+      const btn = e.target.closest(".voice-preview-btn");
+      if (!btn) return;
+      e.preventDefault();
+      _playVoicePreview(btn.dataset.voice, btn);
+    });
+
+    document.getElementById("voiceModal").classList.remove("hidden");
+  });
+}
+
+async function _playVoicePreview(voiceName, btn) {
+  if (btn.disabled) return;
+
+  // Stop any in-progress preview
+  if (_previewSource) {
+    try { _previewSource.stop(); } catch (_) {}
+    _previewSource = null;
+  }
+  document.querySelectorAll(".voice-preview-btn").forEach(b => {
+    b.textContent = "▶ Preview";
+    b.classList.remove("playing");
+    b.disabled = false;
+  });
+
+  btn.textContent = "Loading…";
+  btn.disabled = true;
+
+  try {
+    const res = await apiFetch(`${API_BASE}/voices/preview/${voiceName}`);
+    if (!res.ok) throw new Error(`Preview failed: ${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+
+    // Raw PCM s16le at 24 kHz — decode manually with Web Audio API
+    const sampleRate = 24000;
+    const samples = arrayBuffer.byteLength / 2;
+    if (!_previewAudioCtx || _previewAudioCtx.state === "closed") {
+      _previewAudioCtx = new AudioContext({ sampleRate });
+    }
+    const audioBuffer = _previewAudioCtx.createBuffer(1, samples, sampleRate);
+    const channel = audioBuffer.getChannelData(0);
+    const view = new DataView(arrayBuffer);
+    for (let i = 0; i < samples; i++) {
+      channel[i] = view.getInt16(i * 2, true) / 32768;
+    }
+
+    btn.textContent = "▶ Playing";
+    btn.classList.add("playing");
+    btn.disabled = false;
+
+    const source = _previewAudioCtx.createBufferSource();
+    _previewSource = source;
+    source.buffer = audioBuffer;
+    source.connect(_previewAudioCtx.destination);
+    source.onended = () => {
+      btn.textContent = "▶ Preview";
+      btn.classList.remove("playing");
+      _previewSource = null;
+    };
+    source.start();
+  } catch (err) {
+    btn.textContent = "▶ Preview";
+    btn.disabled = false;
+    console.warn("Voice preview error:", err);
+  }
+}
+
+function _closeVoiceModal(voice) {
+  // Stop any playing preview
+  if (_previewSource) {
+    try { _previewSource.stop(); } catch (_) {}
+    _previewSource = null;
+  }
+  document.getElementById("voiceModal").classList.add("hidden");
+  if (_voiceModalResolve) {
+    _voiceModalResolve(voice);
+    _voiceModalResolve = null;
+  }
+}
+
+document.getElementById("voiceConfirmBtn").addEventListener("click", () => {
+  const checked = document.querySelector("#voiceGrid input[type=radio]:checked");
+  _closeVoiceModal(checked ? checked.value : "Aoede");
+});
+
+document.getElementById("voiceCancelBtn").addEventListener("click", () => {
+  _closeVoiceModal(null);
+});
+
+// Close on overlay click (outside card)
+document.getElementById("voiceModal").addEventListener("click", (e) => {
+  if (e.target === document.getElementById("voiceModal")) _closeVoiceModal(null);
+});
 
 // ── Source management ────────────────────────────────────────────────────────
 
@@ -1129,8 +1271,13 @@ els.newChatBtn.addEventListener("click", async () => {
     if (!confirm("End current conversation and start new?")) return;
     await endConversation();
   }
+
+  // Show voice selection modal; null means user cancelled
+  const selectedVoice = await showVoiceModal();
+  if (selectedVoice === null) return;
+
   try {
-    const data = await createSession("New conversation");
+    const data = await createSession("New conversation", selectedVoice);
     state.sessionId = data.session_id;
     state.sessionSourceCount = 0;
     state.recapData = null;

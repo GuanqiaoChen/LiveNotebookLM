@@ -156,9 +156,18 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str, client_id
         await websocket.send_json({"type": "runtime_connecting"})
 
         system_instruction = _build_system_instruction(session_id, orchestrator, client_id)
+
+        # Load the voice selected for this session (falls back to "Aoede" if absent)
+        try:
+            session_meta = session_store.get_session_metadata(session_id)
+            session_voice = session_meta.voice or "Aoede"
+        except Exception:
+            session_voice = "Aoede"
+
         runtime = LiveRuntime()
         await asyncio.wait_for(
-            runtime.connect(system_instruction=system_instruction), timeout=60
+            runtime.connect(system_instruction=system_instruction, voice=session_voice),
+            timeout=60,
         )
         runtime_ready = True
 

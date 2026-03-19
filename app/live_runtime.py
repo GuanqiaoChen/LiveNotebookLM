@@ -37,7 +37,7 @@ class LiveRuntime:
         self._event_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._session_cm = None
 
-    async def connect(self, system_instruction: str | None = None) -> None:
+    async def connect(self, system_instruction: str | None = None, voice: str | None = None) -> None:
         if self.session is not None:
             return
 
@@ -53,6 +53,14 @@ class LiveRuntime:
         }
         if system_instruction:
             config["system_instruction"] = system_instruction
+        if voice:
+            config["speech_config"] = {
+                "voice_config": {
+                    "prebuilt_voice_config": {
+                        "voice_name": voice,
+                    }
+                }
+            }
 
         self._session_cm = self.client.aio.live.connect(
             model=self.settings.live_notebook_agent_model,

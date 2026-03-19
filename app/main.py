@@ -7,7 +7,7 @@ from google import genai
 
 from app.config import get_settings
 from app.gcs_store import upload_text, upload_bytes
-from app.routes import sessions_router, sources_router, recap_router, backup_router
+from app.routes import sessions_router, sources_router, recap_router, backup_router, voices_router
 from app.live_notebook_agent.agent import AGENT_REGISTRY
 from app.ws_handlers import handle_live_websocket
 
@@ -54,6 +54,7 @@ app.include_router(sessions_router)
 app.include_router(sources_router)
 app.include_router(recap_router)
 app.include_router(backup_router)
+app.include_router(voices_router)
 
 
 @app.get("/")

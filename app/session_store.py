@@ -43,7 +43,7 @@ class SessionStore:
 
     # ── Session CRUD ─────────────────────────────────────────────────────────
 
-    def create_session(self, title: str | None = None) -> SessionMetadata:
+    def create_session(self, title: str | None = None, voice: str | None = None) -> SessionMetadata:
         session_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
         final_title = title.strip() if title and title.strip() else "Untitled Session"
@@ -58,6 +58,7 @@ class SessionStore:
             message_count=0,
             is_active=True,
             ended_at=None,
+            voice=voice or "Aoede",
         )
 
         session_dir = self._session_dir(session_id)

@@ -40,6 +40,7 @@ class SessionMetadata(BaseModel):
     message_count: int = 0
     is_active: bool = True
     ended_at: Optional[datetime] = None
+    voice: str = "Aoede"
 
 
 class SourceMetadata(BaseModel):
@@ -64,6 +65,7 @@ class SessionDetail(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     title: Optional[str] = None
+    voice: Optional[str] = None
 
 
 class CreateSessionResponse(BaseModel):

@@ -621,6 +621,100 @@
     }
     .upload-label:hover { background: #e5e7eb; border-color: #bfc5ce; }
 
+    /* ── Voice selection modal ───────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      backdrop-filter: blur(2px);
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      padding: 28px 24px 24px;
+      width: 100%;
+      max-width: 580px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-card::-webkit-scrollbar { width: 4px; }
+    .modal-card::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+    .modal-subtitle {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 20px;
+    }
+    .voice-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .voice-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      background: #fafafa;
+    }
+    .voice-card:hover { border-color: #93c5fd; background: #f0f7ff; }
+    .voice-card.selected { border-color: #2563eb; background: #eff6ff; }
+    .voice-card input[type="radio"] { display: none; }
+    .voice-card-body { flex: 1; min-width: 0; }
+    .voice-card-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+    .voice-card.selected .voice-card-name { color: #1d4ed8; }
+    .voice-card-desc {
+      font-size: 12px;
+      color: #6b7280;
+      line-height: 1.4;
+    }
+    .voice-preview-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 11px;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      cursor: pointer;
+      transition: background 0.13s, border-color 0.13s;
+      white-space: nowrap;
+    }
+    .voice-preview-btn:hover { background: #e5e7eb; border-color: #bfc5ce; }
+    .voice-preview-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .voice-preview-btn.playing { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
+    .modal-footer {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
     /* ── Mobile tab bar (hidden on desktop) ─────────────────────────────── */
     .mobile-tabs {
       display: none;
@@ -843,6 +937,21 @@
       </div>
 
     </aside>
+  </div>
+
+  <!-- Voice selection modal -->
+  <div id="voiceModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="voiceModalTitle">
+    <div class="modal-card">
+      <div class="modal-title" id="voiceModalTitle">Choose a Voice</div>
+      <div class="modal-subtitle">Select the voice your AI assistant will use for this session.</div>
+      <div class="voice-grid" id="voiceGrid">
+        <!-- Populated by JS -->
+      </div>
+      <div class="modal-footer">
+        <button id="voiceCancelBtn" class="btn btn-ghost">Cancel</button>
+        <button id="voiceConfirmBtn" class="btn btn-primary">Start Conversation</button>
+      </div>
+    </div>
   </div>
 
   <!-- Mobile bottom navigation (visible only on ≤767px) -->

@@ -24,7 +24,7 @@ async def create_session(
     client_id: str = Depends(get_client_id),
 ) -> CreateSessionResponse:
     store = SessionStore(client_id=client_id)
-    metadata = store.create_session(payload.title)
+    metadata = store.create_session(payload.title, payload.voice)
 
     schedule_backup(metadata.session_id, client_id)
     return CreateSessionResponse(
