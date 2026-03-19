@@ -25,9 +25,10 @@ get_settings()
 async def lifespan(_app: FastAPI):
     # On cold start, restore any GCS-backed sessions not present locally.
     # This ensures data survives container restarts (Cloud Run, etc.).
+    # Restore all users' sessions from GCS (client_id-namespaced).
     from app.gcs_backup import GCSBackupService
     try:
-        result = await GCSBackupService().restore_all(overwrite=False)
+        result = await GCSBackupService().restore_all_users(overwrite=False)
         logger.info(
             "GCS startup restore — restored: %d, skipped: %d, total: %d",
             result["restored"], result["skipped"], result["total"],
@@ -166,8 +167,13 @@ async def live_smoke():
 
 
 @app.websocket("/ws/live/{session_id}")
-async def live_ws(websocket: WebSocket, session_id: str):
-    await handle_live_websocket(websocket, session_id)
+async def live_ws(websocket: WebSocket, session_id: str, client_id: str = "default"):
+    """
+    WebSocket endpoint for Gemini Live.
+    client_id is passed as a query parameter (?client_id=…) since WebSocket
+    upgrade requests cannot carry custom headers in most browsers.
+    """
+    await handle_live_websocket(websocket, session_id, client_id)
 
 
 @app.websocket("/ws/ping")

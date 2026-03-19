@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.config import get_settings
 from app.gcs_backup import schedule_backup
 from app.gcs_store import upload_bytes
+from app.routes.deps import get_client_id
 from app.schemas import (
     AddWebSourcesRequest,
     AddWebSourcesResponse,
@@ -35,9 +36,10 @@ def _safe_filename(filename: str) -> str:
 async def upload_source(
     session_id: str,
     file: UploadFile = File(...),
+    client_id: str = Depends(get_client_id),
 ) -> SourceMetadata:
-    session_store = SessionStore()
-    source_store = SourceStore()
+    session_store = SessionStore(client_id=client_id)
+    source_store = SourceStore(client_id=client_id)
     source_processor = SourceProcessor()
     retriever = Retriever()
     settings = get_settings()
@@ -64,7 +66,7 @@ async def upload_source(
 
         safe_name = _safe_filename(file.filename)
         ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        gcs_path = f"sessions/{session_id}/sources/{ts}-{safe_name}"
+        gcs_path = f"sessions/{client_id}/{session_id}/sources/{ts}-{safe_name}"
 
         gcs_uri = upload_bytes(
             path=gcs_path,
@@ -96,7 +98,7 @@ async def upload_source(
         source.chunk_count = len(chunks)
         source_store.update_source(source)
 
-        schedule_backup(session_id)
+        schedule_backup(session_id, client_id)
         return source
 
     except ValueError as exc:
@@ -119,9 +121,12 @@ async def upload_source(
 # ── List / delete ─────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[SourceMetadata])
-async def list_sources(session_id: str) -> list[SourceMetadata]:
-    session_store = SessionStore()
-    source_store = SourceStore()
+async def list_sources(
+    session_id: str,
+    client_id: str = Depends(get_client_id),
+) -> list[SourceMetadata]:
+    session_store = SessionStore(client_id=client_id)
+    source_store = SourceStore(client_id=client_id)
 
     try:
         session_store.get_session_metadata(session_id)
@@ -132,9 +137,13 @@ async def list_sources(session_id: str) -> list[SourceMetadata]:
 
 
 @router.delete("/{source_id}")
-async def delete_source(session_id: str, source_id: str) -> dict:
-    session_store = SessionStore()
-    source_store = SourceStore()
+async def delete_source(
+    session_id: str,
+    source_id: str,
+    client_id: str = Depends(get_client_id),
+) -> dict:
+    session_store = SessionStore(client_id=client_id)
+    source_store = SourceStore(client_id=client_id)
 
     try:
         session_store.get_session_metadata(session_id)
@@ -151,6 +160,7 @@ async def delete_source(session_id: str, source_id: str) -> dict:
 async def web_search_sources(
     session_id: str,
     request: WebSearchRequest,
+    client_id: str = Depends(get_client_id),
 ) -> WebSearchResponse:
     """
     Run the ADK web_search_agent for *query* and return candidate results.
@@ -159,8 +169,8 @@ async def web_search_sources(
     max_results = min(10, remaining_capacity - pending_count)
     where pending_count = checked results from a previous search not yet added.
     """
-    session_store = SessionStore()
-    source_store = SourceStore()
+    session_store = SessionStore(client_id=client_id)
+    source_store = SourceStore(client_id=client_id)
 
     try:
         session_store.get_session_metadata(session_id)
@@ -196,13 +206,14 @@ async def web_search_sources(
 async def add_web_sources(
     session_id: str,
     request: AddWebSourcesRequest,
+    client_id: str = Depends(get_client_id),
 ) -> AddWebSourcesResponse:
     """
     Save the user-selected web search results as session sources.
     Chunks each result's snippet text and indexes it for RAG.
     """
-    session_store = SessionStore()
-    source_store = SourceStore()
+    session_store = SessionStore(client_id=client_id)
+    source_store = SourceStore(client_id=client_id)
     source_processor = SourceProcessor()
     retriever = Retriever()
 
@@ -260,7 +271,7 @@ async def add_web_sources(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    schedule_backup(session_id)
+    schedule_backup(session_id, client_id)
     return AddWebSourcesResponse(
         added=added,
         remaining_capacity=source_store.remaining_capacity(session_id),

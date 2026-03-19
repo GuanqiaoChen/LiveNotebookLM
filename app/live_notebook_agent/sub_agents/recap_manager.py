@@ -92,16 +92,16 @@ def generate_recap_data(
     return recap
 
 
-def save_recap_data(session_id: str, recap: RecapData) -> None:
-    recap_path = _recap_path(session_id)
+def save_recap_data(session_id: str, recap: RecapData, client_id: str = "default") -> None:
+    recap_path = _recap_path(session_id, client_id)
     recap_path.write_text(
         json.dumps(recap.model_dump(mode="json"), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
 
 
-def load_recap_data(session_id: str) -> RecapData | None:
-    recap_path = _recap_path(session_id)
+def load_recap_data(session_id: str, client_id: str = "default") -> RecapData | None:
+    recap_path = _recap_path(session_id, client_id)
     if not recap_path.exists():
         return None
 
@@ -161,8 +161,8 @@ def generate_follow_up_suggestions(
     )
 
 
-def _recap_path(session_id: str) -> Path:
+def _recap_path(session_id: str, client_id: str = "default") -> Path:
     base_dir = Path(settings.sessions_dir).resolve()
-    session_dir = base_dir / session_id
+    session_dir = base_dir / client_id / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir / "recap.json"

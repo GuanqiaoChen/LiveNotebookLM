@@ -11,6 +11,26 @@
 
 const API_BASE = window.location.origin;
 const WS_BASE  = window.location.origin.replace(/^http/, "ws");
+
+// ── Per-browser identity ──────────────────────────────────────────────────────
+// A UUID generated on first visit and persisted in localStorage.
+// Every API request carries it as X-Client-ID so each visitor gets their own
+// isolated session workspace with no data shared across browsers.
+
+const CLIENT_ID = (() => {
+  let id = localStorage.getItem("lnlm_client_id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("lnlm_client_id", id);
+  }
+  return id;
+})();
+
+// Thin wrapper around fetch() that automatically attaches X-Client-ID.
+function apiFetch(url, options = {}) {
+  const headers = { "X-Client-ID": CLIENT_ID, ...(options.headers || {}) };
+  return fetch(url, { ...options, headers });
+}
 const ASSISTANT_PCM_RATE = 24000;
 const USER_PCM_RATE      = 16000;
 
@@ -146,7 +166,7 @@ function scrollMessages() {
 
 async function loadSessionList() {
   try {
-    const res = await fetch(`${API_BASE}/sessions`);
+    const res = await apiFetch(`${API_BASE}/sessions`);
     if (!res.ok) return;
     const sessions = await res.json();
     renderSessionList(sessions);
@@ -235,7 +255,7 @@ async function selectSession(sessionId, title) {
 
 async function loadSessionMessages(sessionId) {
   try {
-    const res = await fetch(`${API_BASE}/sessions/${sessionId}`);
+    const res = await apiFetch(`${API_BASE}/sessions/${sessionId}`);
     if (!res.ok) return;
     const data = await res.json();
     const messages = data.messages || [];
@@ -254,7 +274,7 @@ async function loadSessionMessages(sessionId) {
 }
 
 async function createSession(title) {
-  const res = await fetch(`${API_BASE}/sessions`, {
+  const res = await apiFetch(`${API_BASE}/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ title: title || "New conversation" }),
@@ -269,7 +289,7 @@ async function createSession(title) {
 async function loadSources() {
   if (!state.sessionId) return;
   try {
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources`);
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/sources`);
     if (!res.ok) return;
     const sources = await res.json();
     state.sessionSourceCount = sources.length;
@@ -329,7 +349,7 @@ async function deleteSource(sourceId) {
   if (!state.sessionId) return;
   const srcToDelete = state.currentSources.find(s => s.source_id === sourceId);
   try {
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/${sourceId}`, { method: "DELETE" });
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/sources/${sourceId}`, { method: "DELETE" });
     if (!res.ok) { const e = await res.json().catch(() => ({})); showSourceError(e.detail || "Delete failed"); return; }
     // Restore web results back to the search panel so they can be re-added
     if (srcToDelete && srcToDelete.kind === "web_result") {
@@ -358,7 +378,7 @@ async function uploadFile(file) {
   try {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/upload`, { method: "POST", body: form });
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/sources/upload`, { method: "POST", body: form });
     if (!res.ok) { const e = await res.json().catch(() => ({})); showSourceError(e.detail || "Upload failed"); return; }
     await loadSources();
   } catch (e) { showSourceError(String(e)); }
@@ -454,7 +474,7 @@ async function performWebSearch() {
       return;
     }
 
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/web-search`, {
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/sources/web-search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, pending_count: kept.length }),
@@ -485,7 +505,7 @@ async function addSelectedWebSources() {
   showWebError("");
 
   try {
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/sources/add-web`, {
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/sources/add-web`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ results: selected.map(({ title, url, snippet }) => ({ title, url, snippet })) }),
@@ -579,7 +599,7 @@ async function generateRecap() {
   els.recapPreview.innerHTML = '<span class="recap-placeholder">Generating…</span>';
 
   try {
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/recap/generate`, { method: "POST" });
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/recap/generate`, { method: "POST" });
     if (!res.ok) { const e = await res.json().catch(() => ({})); els.recapPreview.innerHTML = `<span class="recap-placeholder" style="color:#dc2626">${e.detail || "Failed"}</span>`; return; }
     const recap = await res.json();
     state.recapData = recap;
@@ -594,8 +614,12 @@ async function generateRecap() {
 
 async function tryLoadExistingRecap() {
   if (!state.sessionId) return;
+  // Always clear the previous session's recap immediately — never let stale
+  // content from another session bleed through while the fetch is in flight.
+  state.recapData = null;
+  renderRecapPreview(null);
   try {
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/recap`);
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/recap`);
     if (res.ok) { const r = await res.json(); state.recapData = r; renderRecapPreview(r); }
   } catch (_) {}
 }
@@ -625,7 +649,7 @@ function downloadRecap() {
 async function fetchFollowUpSuggestions() {
   if (!state.sessionId) return;
   try {
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}/recap/follow-up`, { method: "POST" });
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}/recap/follow-up`, { method: "POST" });
     if (!res.ok) return;
     const data = await res.json();
     if (data.suggestions && data.suggestions.length) showFollowUpCard(data.suggestions);
@@ -657,7 +681,7 @@ function showFollowUpCard(suggestions) {
 async function updateSessionTitle(title) {
   if (!state.sessionId) return;
   try {
-    const res = await fetch(`${API_BASE}/sessions/${state.sessionId}`, {
+    const res = await apiFetch(`${API_BASE}/sessions/${state.sessionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title }),
@@ -837,7 +861,7 @@ function stopMic() {
 
 function openWebSocket(sessionId) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`${WS_BASE}/ws/live/${sessionId}`);
+    const ws = new WebSocket(`${WS_BASE}/ws/live/${sessionId}?client_id=${CLIENT_ID}`);
     state.ws = ws;
     let settled = false;
     const settle = (fn, val) => { if (settled) return; settled = true; clearTimeout(timer); fn(val); };

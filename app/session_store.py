@@ -13,15 +13,18 @@ class SessionStore:
     """
     Filesystem-backed store for session metadata and conversation messages.
 
-    Each session lives under sessions/{session_id}/ and contains:
+    Each session lives under sessions/{client_id}/{session_id}/ and contains:
     - session.json  — SessionMetadata
     - messages.json — list of MessageRecord
     - recap.json    — optional recap payload
+
+    client_id namespaces all data per browser so every visitor has an isolated
+    workspace. Defaults to "default" for backwards-compat / tests.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, client_id: str = "default") -> None:
         settings = get_settings()
-        self.base_dir = Path(settings.sessions_dir).resolve()
+        self.base_dir = (Path(settings.sessions_dir) / client_id).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
     # ── Private path helpers ─────────────────────────────────────────────────

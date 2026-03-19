@@ -16,7 +16,7 @@ from app.session_store import SessionStore
 
 # ── System instruction builder ────────────────────────────────────────────────
 
-def _build_system_instruction(session_id: str, orchestrator: LiveOrchestrator) -> str:
+def _build_system_instruction(session_id: str, orchestrator: LiveOrchestrator, client_id: str = "default") -> str:
     """
     Build a Gemini Live system instruction that includes:
     - Role and behavioural guidelines
@@ -59,7 +59,7 @@ def _build_system_instruction(session_id: str, orchestrator: LiveOrchestrator) -
         source_names.append(source_name)
 
         chunks_path = (
-            Path(settings.sessions_dir) / session_id / "chunks" / f"{source_id}.json"
+            Path(settings.sessions_dir) / client_id / session_id / "chunks" / f"{source_id}.json"
         )
         if not chunks_path.exists():
             continue
@@ -93,14 +93,14 @@ def _build_system_instruction(session_id: str, orchestrator: LiveOrchestrator) -
 
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
-async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
+async def handle_live_websocket(websocket: WebSocket, session_id: str, client_id: str = "default") -> None:
     await websocket.accept()
 
     # Send "connected" immediately so the frontend's 10-second WS timeout does not
     # fire while we do heavier initialisation (Pinecone Index lookup, etc.).
     await websocket.send_json({"type": "connected", "session_id": session_id})
 
-    session_store = SessionStore()
+    session_store = SessionStore(client_id=client_id)
 
     # Validate session exists
     try:
@@ -148,7 +148,7 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
 
         await websocket.send_json({"type": "runtime_connecting"})
 
-        system_instruction = _build_system_instruction(session_id, orchestrator)
+        system_instruction = _build_system_instruction(session_id, orchestrator, client_id)
         runtime = LiveRuntime()
         await asyncio.wait_for(
             runtime.connect(system_instruction=system_instruction), timeout=60
@@ -286,7 +286,7 @@ async def handle_live_websocket(websocket: WebSocket, session_id: str) -> None:
                     if assistant_text:
                         orchestrator.record_assistant_message(session_id, assistant_text)
                 # Fire-and-forget GCS backup so data persists across restarts
-                schedule_backup(session_id)
+                schedule_backup(session_id, client_id)
                 break
 
     except WebSocketDisconnect:

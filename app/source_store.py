@@ -11,12 +11,12 @@ from app.session_store import SessionStore
 
 
 class SourceStore:
-    def __init__(self) -> None:
+    def __init__(self, client_id: str = "default") -> None:
         settings = get_settings()
-        self.base_dir = Path(settings.sessions_dir).resolve()
+        self.base_dir = (Path(settings.sessions_dir) / client_id).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.max_sources_per_session = settings.max_sources_per_session
-        self.session_store = SessionStore()
+        self.session_store = SessionStore(client_id=client_id)
 
     def _sources_path(self, session_id: str) -> Path:
         session_dir = self.base_dir / session_id

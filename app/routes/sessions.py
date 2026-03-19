@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.gcs_backup import schedule_backup
+from app.routes.deps import get_client_id
 from app.schemas import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -18,11 +19,14 @@ router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.post("", response_model=CreateSessionResponse)
-async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse:
-    store = SessionStore()
+async def create_session(
+    payload: CreateSessionRequest,
+    client_id: str = Depends(get_client_id),
+) -> CreateSessionResponse:
+    store = SessionStore(client_id=client_id)
     metadata = store.create_session(payload.title)
 
-    schedule_backup(metadata.session_id)
+    schedule_backup(metadata.session_id, client_id)
     return CreateSessionResponse(
         session_id=metadata.session_id,
         title=metadata.title,
@@ -31,15 +35,18 @@ async def create_session(payload: CreateSessionRequest) -> CreateSessionResponse
 
 
 @router.get("", response_model=list[SessionMetadata])
-async def list_sessions() -> list[SessionMetadata]:
-    store = SessionStore()
+async def list_sessions(client_id: str = Depends(get_client_id)) -> list[SessionMetadata]:
+    store = SessionStore(client_id=client_id)
     return store.list_sessions()
 
 
 @router.get("/{session_id}", response_model=SessionDetail)
-async def get_session(session_id: str) -> SessionDetail:
-    session_store = SessionStore()
-    source_store = SourceStore()
+async def get_session(
+    session_id: str,
+    client_id: str = Depends(get_client_id),
+) -> SessionDetail:
+    session_store = SessionStore(client_id=client_id)
+    source_store = SourceStore(client_id=client_id)
 
     try:
         detail = session_store.get_session_detail(session_id)
@@ -55,8 +62,12 @@ class UpdateSessionTitleRequest(BaseModel):
 
 
 @router.patch("/{session_id}", response_model=SessionMetadata)
-async def update_session_title(session_id: str, payload: UpdateSessionTitleRequest) -> SessionMetadata:
-    store = SessionStore()
+async def update_session_title(
+    session_id: str,
+    payload: UpdateSessionTitleRequest,
+    client_id: str = Depends(get_client_id),
+) -> SessionMetadata:
+    store = SessionStore(client_id=client_id)
     try:
         return store.update_session_title(session_id, payload.title)
     except FileNotFoundError as exc:
@@ -64,8 +75,11 @@ async def update_session_title(session_id: str, payload: UpdateSessionTitleReque
 
 
 @router.delete("/{session_id}")
-async def delete_session(session_id: str) -> dict:
-    session_store = SessionStore()
+async def delete_session(
+    session_id: str,
+    client_id: str = Depends(get_client_id),
+) -> dict:
+    session_store = SessionStore(client_id=client_id)
 
     try:
         session_store.delete_session(session_id)
